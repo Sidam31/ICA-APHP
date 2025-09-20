@@ -494,22 +494,12 @@
                     </div>
                     <div class="form-group">
                         <div class="form-control">
-                            <label for="dept-naissance">Département de naissance</label>
-                            <input type="text" id="dept-naissance">
+                            <label for="LieuNaissance">Lieu de naissance</label>
+                            <input type="text" id="LieuNaissance">
                         </div>
                         <div class="checkbox-group">
-                            <input id="fuzzy-dept-naissance" type="checkbox">
-                            <label for="fuzzy-dept-naissance" class="checkbox-label">Recherche floue</label>
-                        </div>
-                    </div>
-                    <div class="form-group form-group-full">
-                        <div class="form-control">
-                            <label for="commune-naissance">Commune de naissance</label>
-                            <input type="text" id="commune-naissance">
-                        </div>
-                        <div class="checkbox-group">
-                            <input id="fuzzy-commune-naissance" type="checkbox">
-                            <label for="fuzzy-commune-naissance" class="checkbox-label">Recherche floue</label>
+                            <input id="fuzzy-LieuNaissance" type="checkbox">
+                            <label for="fuzzy-LieuNaissance" class="checkbox-label">Recherche floue</label>
                         </div>
                     </div>
                     <div class="btn-container form-group-full">
@@ -581,7 +571,7 @@
     <script>
         // Variables globales
         let dbData = [];
-        const CSV_FILE_PATH = 'data/relevés PIT - csv_export.csv'; // Chemin relatif pour GitHub Pages
+        const CSV_FILE_PATH = 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/Relev%C3%A9s%20PIT%20-%20csv_export.csv'; // Chemin relatif pour GitHub Pages
 
         // Chargement du CSV au démarrage
         window.addEventListener('DOMContentLoaded', function() {
@@ -643,11 +633,10 @@
             let filteredData = [...dbData];
 
             const searchCriteria = [
-                { id: 'nom', key: 'nom' },
-                { id: 'prenom', key: 'prenom' },
-                { id: 'date-deces', key: 'dateDeces' },
-                { id: 'dept-naissance', key: 'deptNaissance' },
-                { id: 'commune-naissance', key: 'communeNaissance' }
+                { id: 'nom', key: 'Nom' },
+                { id: 'prenom', key: 'Prénoms' },
+                { id: 'date-deces', key: 'Date de décès' },
+                { id: 'lieuNaissance', key: 'Lieu de naissance ' },
             ];
 
             searchCriteria.forEach(criterion => {
@@ -691,8 +680,7 @@
                                 <th>Nom</th>
                                 <th>Prénom</th>
                                 <th>Date de décès</th>
-                                <th>Dépt. Naissance</th>
-                                <th>Commune Naissance</th>
+                                <th>Lieu Naissance</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -704,8 +692,7 @@
                         <td>${item.nom || '-'}</td>
                         <td>${item.prenom || '-'}</td>
                         <td>${item.dateDeces || '-'}</td>
-                        <td>${item.deptNaissance || '-'}</td>
-                        <td>${item.communeNaissance || '-'}</td>
+                        <td>${item.lieuNaissance || '-'}</td>
                     </tr>
                 `;
             });
