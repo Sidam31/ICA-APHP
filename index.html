@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indexation des registres de décès de la Pitié</title>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --french-blue: #0055A4;
+            --french-blue-dark: #003d7a;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--gray-50);
+            line-height: 1.6;
+            color: var(--gray-800);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Header Styles */
+        header {
+            background-color: white;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--french-blue);
+        }
+
+        /* Navigation */
+        nav {
+            display: flex;
+            gap: 32px;
+        }
+
+        .nav-link {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            text-decoration: none;
+            padding-bottom: 4px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--french-blue-dark);
+        }
+
+        .nav-link.active {
+            color: var(--french-blue);
+            border-bottom-color: var(--french-blue);
+        }
+
+        /* Mobile Menu Button */
+        .mobile-menu-button {
+            display: none;
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .mobile-menu-button svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--french-blue);
+        }
+
+        /* Mobile Menu */
+        #mobile-menu {
+            display: none;
+            padding: 8px 12px 12px;
+        }
+
+        #mobile-menu.show {
+            display: block;
+        }
+
+        #mobile-menu a {
+            display: block;
+            padding: 12px 16px;
+            text-decoration: none;
+            color: var(--gray-700);
+            font-weight: 500;
+            border-radius: 8px;
+            transition: background-color 0.3s ease;
+        }
+
+        #mobile-menu a:hover {
+            background-color: var(--gray-100);
+        }
+
+        #mobile-menu a.active {
+            color: var(--french-blue);
+            background-color: rgba(0, 85, 164, 0.1);
+        }
+
+        /* Main Content */
+        main {
+            padding: 48px 0;
+        }
+
+        .page-section {
+            display: none;
+        }
+
+        .page-section.active {
+            display: block;
+        }
+
+        /* Typography */
+        h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--french-blue);
+            margin-bottom: 16px;
+        }
+
+        h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--french-blue);
+            margin-bottom: 16px;
+        }
+
+        h4 {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--french-blue);
+        }
+
+        .subtitle {
+            font-size: 1.125rem;
+            color: var(--gray-600);
+            max-width: 768px;
+            margin: 0 auto;
+        }
+
+        /* Cards */
+        .card {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            margin-top: 48px;
+        }
+
+        .card-content {
+            max-width: 896px;
+            margin: 0 auto;
+        }
+
+        /* Lists */
+        .info-list {
+            list-style: disc;
+            list-style-position: inside;
+            color: var(--gray-700);
+            font-size: 1.125rem;
+        }
+
+        .info-list li {
+            margin-bottom: 8px;
+        }
+
+        .info-list .bold {
+            font-weight: 700;
+        }
+
+        /* Forms */
+        .search-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px 16px;
+        }
+
+        .form-group {
+            display: flex;
+            align-items: flex-end;
+            gap: 12px;
+        }
+
+        .form-group-full {
+            grid-column: span 2;
+        }
+
+        .form-control {
+            flex: 1;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            margin-bottom: 4px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            height: 40px;
+            padding: 0 12px;
+            border: 1px solid var(--gray-300);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: var(--french-blue);
+            box-shadow: 0 0 0 3px rgba(0, 85, 164, 0.1);
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: var(--french-blue);
+        }
+
+        .checkbox-label {
+            font-size: 0.875rem;
+            color: var(--gray-700);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 24px;
+            border-radius: 6px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background-color: var(--french-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: var(--french-blue-dark);
+        }
+
+        .btn-container {
+            text-align: right;
+            margin-top: 24px;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 32px;
+            margin-top: 48px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }
+
+        .stat-label {
+            color: var(--gray-600);
+            margin-top: 8px;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        th, td {
+            border: 1px solid var(--gray-300);
+            padding: 12px;
+            text-align: left;
+        }
+
+        th {
+            background-color: var(--gray-100);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background-color: var(--gray-50);
+        }
+
+        /* Footer */
+        footer {
+            background: white;
+            border-top: 1px solid var(--gray-300);
+            margin-top: 48px;
+            padding: 16px 0;
+        }
+
+        .footer-content {
+            text-align: center;
+            color: var(--gray-500);
+        }
+
+        /* Utilities */
+        .text-center {
+            text-align: center;
+        }
+
+        .mt-6 {
+            margin-top: 24px;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            nav {
+                display: none;
+            }
+
+            .mobile-menu-button {
+                display: block;
+            }
+
+            h2 {
+                font-size: 1.875rem;
+            }
+
+            h4 {
+                font-size: 2rem;
+            }
+
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+
+            .form-group-full {
+                grid-column: span 1;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .btn-container {
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- En-tête et Navigation -->
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <h1 class="logo">Registres de la Pitié</h1>
+                <nav>
+                    <a href="#project" class="nav-link active" onclick="showPage('project', this)">Projet</a>
+                    <a href="#search" class="nav-link" onclick="showPage('search', this)">Recherche</a>
+                    <a href="#join" class="nav-link" onclick="showPage('join', this)">Nous Rejoindre</a>
+                    <a href="#stats" class="nav-link" onclick="showPage('stats', this)">Statistiques</a>
+                </nav>
+                <button class="mobile-menu-button" onclick="toggleMobileMenu()">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                    </svg>
+                </button>
+            </div>
+            <!-- Menu Mobile -->
+            <div id="mobile-menu">
+                <a href="#project" class="active" onclick="showPage('project', this)">Projet</a>
+                <a href="#search" onclick="showPage('search', this)">Recherche</a>
+                <a href="#join" onclick="showPage('join', this)">Nous Rejoindre</a>
+                <a href="#stats" onclick="showPage('stats', this)">Statistiques</a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenu Principal -->
+    <main class="container">
+        <!-- Section Page Projet -->
+        <section id="project" class="page-section active">
+            <div class="text-center">
+                <h2>Découvrez Notre Vision</h2>
+                <p class="subtitle">
+                    Le projet est l'indexation des registres de décès de l'hôpital de la Pitié entre 1809 et 1860. 
+                    Ce projet a pour objectif de combler les lacunes dans les archives d'état civil qui ont brûlé pendant la Commune.
+                </p>
+            </div>
+            <div class="card">
+                <div class="card-content">
+                    <h3 class="text-center">Le projet en quelques chiffres :</h3>
+                    <ul class="info-list">
+                        <li><span class="bold">48 cotes</span> d'archives publiées</li>
+                        <li>Environ <span class="bold">30 pages</span> par cote</li>
+                        <li>Près de <span class="bold">30 individus</span> par page</li>
+                        <li>Soit un total de plus de <span class="bold">45 000 personnes</span> à identifier !</li>
+                    </ul>
+                    <p class="text-center mt-6">
+                        C'est un défi de taille, mais en unissant nos forces, nous pouvons le relever. 
+                        Chaque page que vous indexerez sera une pierre ajoutée à cet édifice commun.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section Page Recherche -->
+        <section id="search" class="page-section">
+            <div class="text-center">
+                <h2>Rechercher dans la Base de Données</h2>
+                <p class="subtitle">
+                    Trouvez les personnes que vous recherchez grâce à notre outil de recherche puissant et intuitif.
+                </p>
+            </div>
+            <div class="card">
+                <form class="search-form" onsubmit="performSearch(event)">
+                    <div class="form-group">
+                        <div class="form-control">
+                            <label for="nom">Nom</label>
+                            <input type="text" id="nom">
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="fuzzy-nom" type="checkbox">
+                            <label for="fuzzy-nom" class="checkbox-label">Recherche floue</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-control">
+                            <label for="prenom">Prénom</label>
+                            <input type="text" id="prenom">
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="fuzzy-prenom" type="checkbox">
+                            <label for="fuzzy-prenom" class="checkbox-label">Recherche floue</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-control">
+                            <label for="date-deces">Date de décès</label>
+                            <input type="text" id="date-deces" placeholder="JJ/MM/AAAA">
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="fuzzy-date-deces" type="checkbox">
+                            <label for="fuzzy-date-deces" class="checkbox-label">Recherche floue</label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-control">
+                            <label for="dept-naissance">Département de naissance</label>
+                            <input type="text" id="dept-naissance">
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="fuzzy-dept-naissance" type="checkbox">
+                            <label for="fuzzy-dept-naissance" class="checkbox-label">Recherche floue</label>
+                        </div>
+                    </div>
+                    <div class="form-group form-group-full">
+                        <div class="form-control">
+                            <label for="commune-naissance">Commune de naissance</label>
+                            <input type="text" id="commune-naissance">
+                        </div>
+                        <div class="checkbox-group">
+                            <input id="fuzzy-commune-naissance" type="checkbox">
+                            <label for="fuzzy-commune-naissance" class="checkbox-label">Recherche floue</label>
+                        </div>
+                    </div>
+                    <div class="btn-container form-group-full">
+                        <button type="submit" class="btn btn-primary">Rechercher</button>
+                    </div>
+                </form>
+            </div>
+            <div id="search-results" class="card">
+                <p class="text-center">Les résultats de la recherche s'afficheront ici.</p>
+            </div>
+        </section>
+
+        <!-- Section Page Nous Rejoindre -->
+        <section id="join" class="page-section">
+            <div class="text-center">
+                <h2>Rejoindre le Projet</h2>
+                <p class="subtitle">
+                    Devenez membre de notre communauté grandissante. 
+                    Nous accueillons les contributeurs de tous horizons et de tous niveaux de compétence.
+                </p>
+            </div>
+            <div class="card text-center">
+                <h3>Rejoignez notre Serveur Discord</h3>
+                <p>Discutez avec d'autres contributeurs et restez informé des dernières nouvelles.</p>
+                <br>
+                <a href="https://discord.gg/your-invite-link" class="btn btn-primary">Rejoindre le Discord</a>
+            </div>
+        </section>
+
+        <!-- Section Page Statistiques -->
+        <section id="stats" class="page-section">
+            <div class="text-center">
+                <h2>La Base de Données en un Clin d'œil</h2>
+                <p class="subtitle">
+                    Explorez les indicateurs clés et la croissance de notre base de données. 
+                    Nos données s'enrichissent constamment grâce à notre communauté dévouée.
+                </p>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h4 id="total-entries">0</h4>
+                    <p class="stat-label">Entrées Totales</p>
+                </div>
+                <div class="stat-card">
+                    <h4 id="total-contributors">0</h4>
+                    <p class="stat-label">Contributeurs</p>
+                </div>
+                <div class="stat-card">
+                    <h4 id="new-entries-month">0</h4>
+                    <p class="stat-label">Nouvelles Entrées ce Mois</p>
+                </div>
+                <div class="stat-card">
+                    <h4 id="completion-rate">0%</h4>
+                    <p class="stat-label">Taux de Complétion</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Pied de page -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <p>&copy; 2025 Projet Registres de la Pitié. Tous droits réservés.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Variables globales
+        let dbData = [];
+        const CSV_FILE_PATH = 'data/relevés PIT - csv_export.csv'; // Chemin relatif pour GitHub Pages
+
+        // Chargement du CSV au démarrage
+        window.addEventListener('DOMContentLoaded', function() {
+            loadCSVData();
+            initializeNavigation();
+        });
+
+        // Fonction pour charger les données CSV
+        function loadCSVData() {
+            Papa.parse(CSV_FILE_PATH, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    dbData = results.data;
+                    console.log(`${dbData.length} entrées chargées depuis le CSV`);
+                    updateStatistics();
+                },
+                error: function(error) {
+                    console.error("Erreur lors du chargement du CSV:", error);
+                    // Fallback: afficher un message d'erreur à l'utilisateur
+                    document.getElementById('search-results').innerHTML = 
+                        '<p class="text-center" style="color: red;">Erreur de chargement de la base de données. Veuillez réessayer plus tard.</p>';
+                }
+            });
+        }
+
+        // Mise à jour des statistiques
+        function updateStatistics() {
+            if (dbData.length > 0) {
+                document.getElementById('total-entries').textContent = dbData.length.toLocaleString('fr-FR');
+                
+                // Calculer d'autres statistiques
+                const uniqueContributors = new Set(dbData.map(item => item.contributeur).filter(Boolean));
+                document.getElementById('total-contributors').textContent = uniqueContributors.size.toLocaleString('fr-FR');
+                
+                // Entrées du mois (exemple basé sur la date d'ajout si disponible)
+                const currentMonth = new Date().getMonth();
+                const currentYear = new Date().getFullYear();
+                const monthEntries = dbData.filter(item => {
+                    if (item.dateAjout) {
+                        const date = new Date(item.dateAjout);
+                        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+                    }
+                    return false;
+                });
+                document.getElementById('new-entries-month').textContent = monthEntries.length.toLocaleString('fr-FR');
+                
+                // Taux de complétion (basé sur l'objectif de 45000)
+                const completionRate = Math.min(100, (dbData.length / 45000) * 100);
+                document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
+            }
+        }
+
+        // Fonction de recherche
+        function performSearch(event) {
+            if (event) event.preventDefault();
+            
+            let filteredData = [...dbData];
+
+            const searchCriteria = [
+                { id: 'nom', key: 'nom' },
+                { id: 'prenom', key: 'prenom' },
+                { id: 'date-deces', key: 'dateDeces' },
+                { id: 'dept-naissance', key: 'deptNaissance' },
+                { id: 'commune-naissance', key: 'communeNaissance' }
+            ];
+
+            searchCriteria.forEach(criterion => {
+                const searchTerm = document.getElementById(criterion.id).value.trim().toLowerCase();
+                const isFuzzy = document.getElementById(`fuzzy-${criterion.id}`).checked;
+
+                if (searchTerm) {
+                    if (isFuzzy) {
+                        const fuse = new Fuse(filteredData, { 
+                            keys: [criterion.key], 
+                            threshold: 0.4,
+                            includeScore: true 
+                        });
+                        filteredData = fuse.search(searchTerm).map(result => result.item);
+                    } else {
+                        filteredData = filteredData.filter(item => 
+                            item[criterion.key] && item[criterion.key].toLowerCase().includes(searchTerm)
+                        );
+                    }
+                }
+            });
+
+            displayResults(filteredData);
+        }
+
+        // Affichage des résultats
+        function displayResults(results) {
+            const resultsContainer = document.getElementById('search-results');
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-center">Aucun résultat trouvé.</p>';
+                return;
+            }
+
+            let tableHTML = `
+                <h3>${results.length} résultat(s) trouvé(s)</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Prénom</th>
+                                <th>Date de décès</th>
+                                <th>Dépt. Naissance</th>
+                                <th>Commune Naissance</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            results.slice(0, 100).forEach(item => { // Limiter à 100 résultats pour les performances
+                tableHTML += `
+                    <tr>
+                        <td>${item.nom || '-'}</td>
+                        <td>${item.prenom || '-'}</td>
+                        <td>${item.dateDeces || '-'}</td>
+                        <td>${item.deptNaissance || '-'}</td>
+                        <td>${item.communeNaissance || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            if (results.length > 100) {
+                tableHTML += `
+                    <tr>
+                        <td colspan="5" class="text-center">
+                            ... et ${results.length - 100} autre(s) résultat(s). Affinez votre recherche pour voir plus de détails.
+                        </td>
+                    </tr>
+                `;
+            }
+
+            tableHTML += '</tbody></table></div>';
+            resultsContainer.innerHTML = tableHTML;
+        }
+
+        // Navigation entre les pages
+        function showPage(pageId, element) {
+            // Masquer toutes les sections
+            document.querySelectorAll('.page-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Afficher la section sélectionnée
+            document.getElementById(pageId).classList.add('active');
+
+            // Mettre à jour l'état actif des liens
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            
+            // Navigation desktop
+            document.querySelectorAll(`nav a[href="#${pageId}"]`).forEach(link => {
+                link.classList.add('active');
+            });
+            
+            // Navigation mobile
+            document.querySelectorAll(`#mobile-menu a[href="#${pageId}"]`).forEach(link => {
+                link.classList.add('active');
+            });
+
+            // Fermer le menu mobile
+            document.getElementById('mobile-menu').classList.remove('show');
+
+            // Mettre à jour l'URL
+            window.location.hash = pageId;
+        }
+
+        // Toggle menu mobile
+        function toggleMobileMenu() {
+            document.getElementById('mobile-menu').classList.toggle('show');
+        }
+
+        // Initialisation de la navigation
+        function initializeNavigation() {
+            const hash = window.location.hash.substring(1);
+            if (hash && document.getElementById(hash)) {
+                const targetLink = document.querySelector(`.nav-link[href="#${hash}"]`);
+                if (targetLink) {
+                    showPage(hash, targetLink);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
