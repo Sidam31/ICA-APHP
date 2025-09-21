@@ -474,7 +474,7 @@
                     </div>
                     <div class="form-group">
                         <div class="form-control">
-                            <label for="prenom">Prénom</label>
+                            <label for="prenom">Prénoms</label>
                             <input type="text" id="prenom">
                         </div>
                         <div class="checkbox-group">
@@ -525,7 +525,7 @@
                 <h3>Rejoignez notre Serveur Discord</h3>
                 <p>Discutez avec d'autres contributeurs et restez informé des dernières nouvelles.</p>
                 <br>
-                <a href="https://discord.gg/your-invite-link" class="btn btn-primary">Rejoindre le Discord</a>
+                <a href="https://discord.gg/8p6ceeUdEJ" class="btn btn-primary">Rejoindre le Discord du Centre de Généalogie</a>
             </div>
         </section>
 
@@ -544,12 +544,8 @@
                     <p class="stat-label">Entrées Totales</p>
                 </div>
                 <div class="stat-card">
-                    <h4 id="total-contributors">0</h4>
+                    <h4 id="total-contributors">18</h4>
                     <p class="stat-label">Contributeurs</p>
-                </div>
-                <div class="stat-card">
-                    <h4 id="new-entries-month">0</h4>
-                    <p class="stat-label">Nouvelles Entrées ce Mois</p>
                 </div>
                 <div class="stat-card">
                     <h4 id="completion-rate">0%</h4>
@@ -563,7 +559,7 @@
     <footer>
         <div class="container">
             <div class="footer-content">
-                <p>&copy; 2025 Projet Registres de la Pitié. Tous droits réservés.</p>
+                <p>&copy; 2025 Projet Registres de la Pitié. Le Centre de Généalogie. Tous droits réservés.</p>
             </div>
         </div>
     </footer>
@@ -604,22 +600,6 @@
             if (dbData.length > 0) {
                 document.getElementById('total-entries').textContent = dbData.length.toLocaleString('fr-FR');
                 
-                // Calculer d'autres statistiques
-                const uniqueContributors = new Set(dbData.map(item => item.contributeur).filter(Boolean));
-                document.getElementById('total-contributors').textContent = uniqueContributors.size.toLocaleString('fr-FR');
-                
-                // Entrées du mois (exemple basé sur la date d'ajout si disponible)
-                const currentMonth = new Date().getMonth();
-                const currentYear = new Date().getFullYear();
-                const monthEntries = dbData.filter(item => {
-                    if (item.dateAjout) {
-                        const date = new Date(item.dateAjout);
-                        return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-                    }
-                    return false;
-                });
-                document.getElementById('new-entries-month').textContent = monthEntries.length.toLocaleString('fr-FR');
-                
                 // Taux de complétion (basé sur l'objectif de 45000)
                 const completionRate = Math.min(100, (dbData.length / 45000) * 100);
                 document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
@@ -641,6 +621,7 @@
 
             searchCriteria.forEach(criterion => {
                 const searchTerm = document.getElementById(criterion.id).value.trim().toLowerCase();
+                const searchTerm_woaccent = searchTerm.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); // Supprimer les accents
                 const isFuzzy = document.getElementById(`fuzzy-${criterion.id}`).checked;
 
                 if (searchTerm) {
@@ -650,10 +631,10 @@
                             threshold: 0.4,
                             includeScore: true 
                         });
-                        filteredData = fuse.search(searchTerm).map(result => result.item);
+                        filteredData = fuse.search(searchTerm_woaccent).map(result => result.item);
                     } else {
                         filteredData = filteredData.filter(item => 
-                            item[criterion.key] && item[criterion.key].toLowerCase().includes(searchTerm)
+                            item[criterion.key] && item[criterion.key].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes(searchTerm_woaccent)
                         );
                     }
                 }
@@ -678,9 +659,11 @@
                         <thead>
                             <tr>
                                 <th>Nom</th>
-                                <th>Prénom</th>
+                                <th>Prénoms</th>
                                 <th>Date de décès</th>
-                                <th>Lieu Naissance</th>
+                                <th>Lieu de naissance</th>
+                                <th>Cause du décès</th>
+                                <th>Permalien</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -689,10 +672,12 @@
             results.slice(0, 100).forEach(item => { // Limiter à 100 résultats pour les performances
                 tableHTML += `
                     <tr>
-                        <td>${item.nom || '-'}</td>
-                        <td>${item.prenom || '-'}</td>
-                        <td>${item.dateDeces || '-'}</td>
-                        <td>${item.lieuNaissance || '-'}</td>
+                        <td>${item['Nom'] || '-'}</td>
+                        <td>${item['Prénoms'] || '-'}</td>
+                        <td>${item['Date de décès'] || '-'}</td>
+                        <td>${item['Lieu de naissance '] || '-'}</td>
+                        <td>${item['Cause de mort: espèce'] || '-'}</td>
+                        <td><a href='${item['Permalien'] || '-'}'>lien</a></td>
                     </tr>
                 `;
             });
