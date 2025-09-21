@@ -6,6 +6,9 @@
     <title>Indexation des registres de décès de la Pitié</title>
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/jasondavies/d3-cloud@v1.2.7/build/d3.layout.cloud.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -306,6 +309,19 @@
             box-shadow: var(--shadow-lg);
             text-align: center;
         }
+        .big-stats-grid {
+            display: flow;
+            grid-template-columns: 1fr 1fr;
+            gap: 32px;
+            margin-top: 48px;
+        }
+        .big-stat-card {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            text-align: center;
+        }
 
         .stat-label {
             color: var(--gray-600);
@@ -552,6 +568,16 @@
                     <p class="stat-label">Taux de Complétion</p>
                 </div>
             </div>
+            <div class="big-stats-grid">
+                <div class="big-stat-card">
+                    <h3>Noms de famille les plus fréquents</h3>
+                    <div id="word-cloud"></div>
+                </div>
+                <div class="big-stat-card">
+                    <h3>Répartition des causes de décès</h3>
+                    <canvas id="causes-chart"></canvas>
+                </div>
+            </div>
         </section>
     </main>
 
@@ -596,6 +622,7 @@
         }
 
         // Mise à jour des statistiques
+        let causeChartInstance = null;
         function updateStatistics() {
             if (dbData.length > 0) {
                 document.getElementById('total-entries').textContent = dbData.length.toLocaleString('fr-FR');
@@ -603,9 +630,107 @@
                 // Taux de complétion (basé sur l'objectif de 45000)
                 const completionRate = Math.min(100, (dbData.length / 45000) * 100);
                 document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
+
+                generateCausesChart(dbData);
+                generateWordCloud(dbData);
             }
         }
+        function generateWordCloud(data) {
+            const nameCounts = data.reduce((acc, row) => {
+                const name = row['Nom'] ? row['Nom'].trim().toUpperCase() : '';
+                if (name) {
+                    acc[name] = (acc[name] || 0) + 1;
+                }
+                return acc;
+            }, {});
 
+            const words = Object.entries(nameCounts)
+                .map(([text, size]) => ({ text, size }))
+                .sort((a, b) => b.size - a.size)
+                .slice(0, 100); // Limiter aux 100 noms les plus fréquents
+
+            const [width, height] = [500, 400];
+            const layout = d3.layout.cloud()
+                .size([width, height])
+                .words(words)
+                .padding(5)
+                .rotate(() => (~~(Math.random() * 6) - 3) * 30)
+                .font("Inter")
+                .fontSize(d => Math.sqrt(d.size) * 10)
+                .on("end", draw);
+
+            layout.start();
+
+            function draw(words) {
+                d3.select("#word-cloud").html(""); // Nettoyer le conteneur
+                d3.select("#word-cloud").append("svg")
+                    .attr("width", layout.size()[0])
+                    .attr("height", layout.size()[1])
+                    .append("g")
+                    .attr("transform", "translate(" + layout.size()[0] / 2 + "," + layout.size()[1] / 2 + ")")
+                    .selectAll("text")
+                    .data(words)
+                    .enter().append("text")
+                    .style("font-size", d => d.size + "px")
+                    .style("font-family", "Inter")
+                    .style("fill", "#0055A4")
+                    .attr("text-anchor", "middle")
+                    .attr("transform", d => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
+                    .text(d => d.text);
+            }
+        }
+        
+        function generateCausesChart(data) {
+            const causeCounts = data.reduce((acc, row) => {
+                const cause = row['Cause de mort: espèce'] ? row['Cause de mort: espèce'].trim() : 'N/C';
+                if (cause) {
+                    acc[cause] = (acc[cause] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+            const sortedCauses = Object.entries(causeCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 10); // Top 10 des causes
+
+            const labels = sortedCauses.map(entry => entry[0]);
+            const values = sortedCauses.map(entry => entry[1]);
+
+            const ctx = document.getElementById('causes-chart').getContext('2d');
+            
+            if (causeChartInstance) {
+                causeChartInstance.destroy();
+            }
+
+            causeChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '10 Causes de décès les plus fréquentes',
+                        data: values,
+                        backgroundColor: [
+                            '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
+                            '#B0C4DE', '#6495ED', '#00BFFF', '#5F9EA0', '#778899',
+                            '#0D6EFD', '#A9A9A9'
+                        ],
+                        borderColor: '#FFFFFF',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
         // Fonction de recherche
         function performSearch(event) {
             if (event) event.preventDefault();
