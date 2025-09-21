@@ -636,7 +636,7 @@
                 { id: 'nom', key: 'Nom' },
                 { id: 'prenom', key: 'Prénoms' },
                 { id: 'date-deces', key: 'Date de décès' },
-                { id: 'lieuNaissance', key: 'Lieu de naissance ' },
+                { id: 'LieuNaissance', key: 'Lieu de naissance ' },
             ];
 
             searchCriteria.forEach(criterion => {
@@ -716,6 +716,9 @@
             // Masquer toutes les sections
             document.querySelectorAll('.page-section').forEach(section => {
                 section.classList.remove('active');
+            });
+            document.querySelectorAll(`#mobile-menu a`).forEach(link => {
+                link.classList.remove('active');
             });
 
             // Afficher la section sélectionnée
