@@ -786,8 +786,12 @@
                                 <th>Nom</th>
                                 <th>Prénoms</th>
                                 <th>Date de décès</th>
+                                <th>Âge</th>
                                 <th>Lieu de naissance</th>
+                                <td>Profession</td>
                                 <th>Cause du décès</th>
+                                <th>Nom conjoint</th>
+                                <th>Prénoms conjoint</th>
                                 <th>Permalien</th>
                             </tr>
                         </thead>
@@ -804,6 +808,8 @@
                         <td>${item['Lieu de naissance '] || '-'}</td>
                         <td>${item['Profession'] || '-'}</td>
                         <td>${item['Cause de mort: espèce'] || '-'}</td>
+                        <td>${item['NOM CONJOINT'] || '-'}</td>
+                        <td>${item['Prénoms Conjoint'] || '-'}</td>
                         <td><a href='${item['Permalien'] || '-'}'>lien</a></td>
                     </tr>
                 `;
