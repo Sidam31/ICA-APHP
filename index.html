@@ -667,7 +667,7 @@
                 .sort((a, b) => b.size - a.size)
                 .slice(0, 100); // Limiter aux 100 noms les plus fréquents
 
-            const [width, height] = [300, 300];
+            const [width, height] = [document.getElementById('word-cloud').offsetWidth, 300];
             const layout = d3.layout.cloud()
                 .size([width, height])
                 .words(words)
