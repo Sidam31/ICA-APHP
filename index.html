@@ -327,7 +327,21 @@
             color: var(--gray-600);
             margin-top: 8px;
         }
-
+        
+        .causes-chart {
+            width: 30vw;
+            height: 25vh;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+        }
         /* Table */
         .table-container {
             overflow-x: auto;
@@ -365,20 +379,6 @@
         .footer-content {
             text-align: center;
             color: var(--gray-500);
-        }
-        .causes-chart {
-            width: 30vw;
-            height: 40vh;
-            background-color: #ffffff;
-            border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            padding: 20px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        canvas {
-            display: block;
         }
 
         /* Utilities */
@@ -584,11 +584,11 @@
             </div>
             <div class="big-stats-grid">
                 <div class="big-stat-card">
-                    <h3>Noms de famille les plus fréquents</h3>
+                    <h3>Les 100 Noms de famille les plus fréquents</h3>
                     <div id="word-cloud"></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Répartition des causes de décès</h3>
+                    <h3>Proportion des 20 causes de décès les plus fréquentes</h3>
                     <canvas id="causes-chart"></canvas>
                 </div>
             </div>
