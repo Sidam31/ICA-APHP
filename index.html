@@ -797,10 +797,12 @@
             results.slice(0, 100).forEach(item => { // Limiter à 100 résultats pour les performances
                 tableHTML += `
                     <tr>
-                        <td>${item['Nom'] || '-'}</td>
+                        <td>${item['NOM'] || '-'}</td>
                         <td>${item['Prénoms'] || '-'}</td>
                         <td>${item['Date de décès'] || '-'}</td>
+                        <td>${item['Âge'] || '-'}</td>
                         <td>${item['Lieu de naissance '] || '-'}</td>
+                        <td>${item['Profession'] || '-'}</td>
                         <td>${item['Cause de mort: espèce'] || '-'}</td>
                         <td><a href='${item['Permalien'] || '-'}'>lien</a></td>
                     </tr>
