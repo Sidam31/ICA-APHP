@@ -651,11 +651,11 @@
         }
         function generateWordCloud(data) {
             const nameCounts = data.reduce((acc, row) => {
-                const name = row['NOM'] ? row['NOM'].trim().toUpperCase() : '';
+                var name = row['NOM'] ? row['NOM'].trim().toUpperCase() : '';
                 if (name) {
                     acc[name] = (acc[name] || 0) + 1;
                 }
-                const name = row['NOM CONJOINT'] ? row['NOM CONJOINT'].trim().toUpperCase() : '';
+                name = row['NOM CONJOINT'] ? row['NOM CONJOINT'].trim().toUpperCase() : '';
                 if (name) {
                     acc[name] = (acc[name] || 0) + 1;
                 }
