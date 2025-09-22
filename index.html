@@ -366,6 +366,20 @@
             text-align: center;
             color: var(--gray-500);
         }
+        .causes-chart {
+            width: 30vw;
+            height: 40vh;
+            background-color: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        canvas {
+            display: block;
+        }
 
         /* Utilities */
         .text-center {
@@ -637,7 +651,11 @@
         }
         function generateWordCloud(data) {
             const nameCounts = data.reduce((acc, row) => {
-                const name = row['Nom'] ? row['Nom'].trim().toUpperCase() : '';
+                const name = row['NOM'] ? row['NOM'].trim().toUpperCase() : '';
+                if (name) {
+                    acc[name] = (acc[name] || 0) + 1;
+                }
+                const name = row['NOM CONJOINT'] ? row['NOM CONJOINT'].trim().toUpperCase() : '';
                 if (name) {
                     acc[name] = (acc[name] || 0) + 1;
                 }
@@ -649,7 +667,7 @@
                 .sort((a, b) => b.size - a.size)
                 .slice(0, 100); // Limiter aux 100 noms les plus fréquents
 
-            const [width, height] = [500, 400];
+            const [width, height] = [300, 300];
             const layout = d3.layout.cloud()
                 .size([width, height])
                 .words(words)
@@ -691,7 +709,7 @@
 
             const sortedCauses = Object.entries(causeCounts)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 10); // Top 10 des causes
+                .slice(0, 20); // Top 20 des causes
 
             const labels = sortedCauses.map(entry => entry[0]);
             const values = sortedCauses.map(entry => entry[1]);
