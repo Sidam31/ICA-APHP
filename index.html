@@ -667,7 +667,8 @@
                 .sort((a, b) => b.size - a.size)
                 .slice(0, 100); // Limiter aux 100 noms les plus fréquents
 
-            const [width, height] = [document.getElementById('word-cloud').offsetWidth, 300];
+            const [width, height] = [200, 300];
+            //TODO do not use this lib >.<
             const layout = d3.layout.cloud()
                 .size([width, height])
                 .words(words)
@@ -675,7 +676,9 @@
                 .rotate(() => (~~(Math.random() * 6) - 3) * 30)
                 .font("Inter")
                 .fontSize(d => Math.sqrt(d.size) * 10)
-                .on("end", draw);
+                .on("end", draw)
+                .timeInterval(20);
+                
 
             layout.start();
 
