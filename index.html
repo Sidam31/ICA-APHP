@@ -809,7 +809,7 @@
                                 <th>Date de décès</th>
                                 <th>Âge</th>
                                 <th>Lieu de naissance</th>
-                                <td>Profession</td>
+                                <th>Profession</th>
                                 <th>Cause du décès</th>
                                 <th>Nom conjoint</th>
                                 <th>Prénoms conjoint</th>
@@ -819,7 +819,7 @@
                         <tbody>
             `;
 
-            results.slice(0, 100).forEach(item => { // Limiter à 100 résultats pour les performances
+            results.slice(0, 200).forEach(item => { // Limiter à 200 résultats pour les performances
                 tableHTML += `
                     <tr>
                         <td>${item['NOM'] || '-'}</td>
@@ -836,7 +836,7 @@
                 `;
             });
 
-            if (results.length > 100) {
+            if (results.length > 200) {
                 tableHTML += `
                     <tr>
                         <td colspan="10" class="text-center">
