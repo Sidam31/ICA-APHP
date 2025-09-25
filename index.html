@@ -340,7 +340,10 @@
             align-items: center;
         }
         canvas {
-            display: inline;
+            padding: 0;
+            margin: auto;
+            height: 200px;
+            width: 100%;
         }
         /* Table */
         .table-container {
@@ -465,7 +468,7 @@
                     Ce projet a pour objectif de combler les lacunes dans les archives d'état civil qui ont brûlé pendant la Commune.
                 </p>
             </div>
-            <div class="card">
+            <div class="card" id="project-card">
                 <div class="card-content">
                     <h3 class="text-center">Le projet en quelques chiffres :</h3>
                     <ul class="info-list">
@@ -490,7 +493,7 @@
                     Trouvez les personnes que vous recherchez grâce à notre outil de recherche puissant et intuitif.
                 </p>
             </div>
-            <div class="card">
+            <div class="card" id="search-card">
                 <form class="search-form" onsubmit="performSearch(event)">
                     <div class="form-group">
                         <div class="form-control">
@@ -551,7 +554,7 @@
                     Nous accueillons les contributeurs de tous horizons et de tous niveaux de compétence.
                 </p>
             </div>
-            <div class="card text-center">
+            <div class="card text-center" id="join-card">
                 <h3>Rejoignez notre Serveur Discord</h3>
                 <p>Discutez avec d'autres contributeurs et restez informé des dernières nouvelles.</p>
                 <br>
@@ -667,7 +670,11 @@
                 .sort((a, b) => b.size - a.size)
                 .slice(0, 100); // Limiter aux 100 noms les plus fréquents
 
-            const [width, height] = [200, 300];
+            var [width, height] = [document.getElementById('word-cloud').offsetWidth, 300];
+            if (width === 0) width = document.getElementById('project-card').offsetWidth*0.8; // Valeur par défaut si le conteneur n'a pas de largeur définie
+            if (width === 0) width = document.getElementById('search-card').offsetWidth*0.8;
+            if (width === 0) width = document.getElementById('join-card').offsetWidth*0.8;
+            if (width === 0) width = 300;
             //TODO do not use this lib >.<
             const layout = d3.layout.cloud()
                 .size([width, height])
@@ -728,7 +735,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '10 Causes de décès les plus fréquentes',
+                        label: '20 Causes de décès les plus fréquentes',
                         data: values,
                         backgroundColor: [
                             '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
