@@ -590,7 +590,7 @@
                     <div id="word-cloud"></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 20 causes de décès les plus fréquentes</h3>
+                    <h3>Proportion des 10 causes de décès les plus fréquentes</h3>
                     <canvas id="causes-chart"></canvas>
                 </div>
             </div>
@@ -617,6 +617,9 @@
             initializeNavigation();
         });
 
+        function capitalizeFirstLetter(val) {
+            return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+        }
         // Fonction pour charger les données CSV
         function loadCSVData() {
             Papa.parse(CSV_FILE_PATH, {
@@ -709,8 +712,8 @@
         
         function generateCausesChart(data) {
             const causeCounts = data.reduce((acc, row) => {
-                const cause = row['Cause de mort: espèce'] ? row['Cause de mort: espèce'].trim() : 'N/C';
-                if (cause) {
+                const cause = row['Cause de mort: espèce'] ? capitalizeFirstLetter(row['Cause de mort: espèce'].trim()) : 'N/C';
+                if (cause && cause !== "N/C") {
                     acc[cause] = (acc[cause] || 0) + 1;
                 }
                 return acc;
@@ -718,7 +721,7 @@
 
             const sortedCauses = Object.entries(causeCounts)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 20); // Top 20 des causes
+                .slice(0, 10); // Top 10 des causes
 
             const labels = sortedCauses.map(entry => entry[0]);
             const values = sortedCauses.map(entry => entry[1]);
@@ -734,7 +737,7 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '20 Causes de décès les plus fréquentes',
+                        label: '10 Causes de décès les plus fréquentes',
                         data: values,
                         backgroundColor: [
                             '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
@@ -749,7 +752,7 @@
                     responsive: false,
                     plugins: {
                         legend: {
-                            position: 'top',
+                            position: 'right',
                         },
                         title: {
                             display: false
