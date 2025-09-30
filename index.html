@@ -370,6 +370,21 @@
             background-color: var(--gray-50);
         }
 
+        .column-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+            background-color: #f9fafb;
+        }
+        .column-controls label {
+            margin-right: 1rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .column-controls input {
+            margin-right: 0.25rem;
+        }
         /* Footer */
         footer {
             background: white;
@@ -796,6 +811,21 @@
         }
 
         // Affichage des résultats
+        function check_listener(e){
+            console.log('Toggling column:', e.target.value, 'Checked:', e.target.checked);
+            const table = document.getElementById('results-table');
+            const columnIndex = e.target.value;
+            // Get all cells in this column (header and body cells)
+            const cells = table.querySelectorAll(`th[data-column="${columnIndex}"], td:nth-child(${parseInt(columnIndex) + 1})`);
+            
+            // Toggle the 'hidden' class based on checkbox state
+            cells.forEach(cell => {
+                cell.style.visibility = e.target.checked ? '' : 'collapse';
+                cell.style.display = e.target.checked ? '' : 'none';
+                cell.classList.toggle('hidden', !e.target.checked);
+            });
+        }
+
         function displayResults(results) {
             const resultsContainer = document.getElementById('search-results');
             
@@ -806,20 +836,24 @@
 
             let tableHTML = `
                 <h3>${results.length} résultat(s) trouvé(s)</h3>
+                
                 <div class="table-container">
-                    <table>
+                    <strong>Show/Hide Columns:</strong>
+                    <div id="column-controls" class="column-controls">
+                    </div>
+                    <table id="results-table">
                         <thead>
                             <tr>
-                                <th>Nom</th>
-                                <th>Prénoms</th>
-                                <th>Date de décès</th>
-                                <th>Âge</th>
-                                <th>Lieu de naissance</th>
-                                <th>Profession</th>
-                                <th>Cause du décès</th>
-                                <th>Nom conjoint</th>
-                                <th>Prénoms conjoint</th>
-                                <th>Permalien</th>
+                                <th data-column="0">Nom</th>
+                                <th data-column="1">Prénoms</th>
+                                <th data-column="2">Date de décès</th>
+                                <th data-column="3">Âge</th>
+                                <th data-column="4">Lieu de naissance</th>
+                                <th data-column="5">Profession</th>
+                                <th data-column="6">Cause du décès</th>
+                                <th data-column="7">Nom conjoint</th>
+                                <th data-column="8">Prénoms conjoint</th>
+                                <th data-column="9">Permalien</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -828,16 +862,16 @@
             results.slice(0, 200).forEach(item => { // Limiter à 200 résultats pour les performances
                 tableHTML += `
                     <tr>
-                        <td>${item['NOM'] || '-'}</td>
-                        <td>${item['Prénoms'] || '-'}</td>
-                        <td>${item['Date de décès'] || '-'}</td>
-                        <td>${item['Âge'] || '-'}</td>
-                        <td>${item['Lieu de naissance '] || '-'}</td>
-                        <td>${item['Profession'] || '-'}</td>
-                        <td>${item['Cause de mort: espèce'] || '-'}</td>
-                        <td>${item['NOM CONJOINT'] || '-'}</td>
-                        <td>${item['Prénoms Conjoint'] || '-'}</td>
-                        <td><a href='${item['Permalien'] || '-'}'>lien</a></td>
+                        <td class="nth-child">${item['NOM'] || '-'}</td>
+                        <td class="nth-child">${item['Prénoms'] || '-'}</td>
+                        <td class="nth-child">${item['Date de décès'] || '-'}</td>
+                        <td class="nth-child">${item['Âge'] || '-'}</td>
+                        <td class="nth-child">${item['Lieu de naissance '] || '-'}</td>
+                        <td class="nth-child">${item['Profession'] || '-'}</td>
+                        <td class="nth-child">${item['Cause de mort: espèce'] || '-'}</td>
+                        <td class="nth-child">${item['NOM CONJOINT'] || '-'}</td>
+                        <td class="nth-child">${item['Prénoms Conjoint'] || '-'}</td>
+                        <td class="nth-child"><a href='${item['Permalien'] || '-'}'>lien</a></td>
                     </tr>
                 `;
             });
@@ -854,6 +888,30 @@
 
             tableHTML += '</tbody></table></div>';
             resultsContainer.innerHTML = tableHTML;
+
+            const table = document.getElementById('results-table');
+            const headers = table.querySelectorAll('thead th');
+            const controlsContainer = document.getElementById('column-controls');
+            const tbody = table.querySelector('tbody');
+
+            // --- Part 1: Column Toggling (Show/Hide) ---
+            headers.forEach((header, index) => {
+                if (index < 2) return; // Skip the first two columns (always visible)
+                // Create a checkbox for each column header
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = index;
+                checkbox.checked = true; // All columns are visible by default
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(header.textContent));
+                controlsContainer.appendChild(label);
+
+                // Add event listener to the checkbox
+                checkbox.addEventListener('change', (e) => check_listener(e));
+            });
+            
         }
 
         // Navigation entre les pages
