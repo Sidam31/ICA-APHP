@@ -608,6 +608,14 @@
                     <h3>Proportion des 20 causes de décès les plus fréquentes</h3>
                     <canvas id="causes-chart"></canvas>
                 </div>
+                <div class="big-stat-card">
+                    <h3>Pyramide des âges au décès</h3>
+                    <canvas id="age-histogram-chart"></canvas>
+                </div>
+                <div class="big-stat-card">
+                    <h3>Proportion des 20 professions les plus fréquentes</h3>
+                    <canvas id="prof-chart"></canvas>
+                </div>
             </div>
         </section>
     </main>
@@ -654,6 +662,8 @@
 
         // Mise à jour des statistiques
         let causeChartInstance = null;
+        let ageHistogramInstance = null;
+        let profChartInstance = null;
         function updateStatistics() {
             if (dbData.length > 0) {
                 document.getElementById('total-entries').textContent = dbData.length.toLocaleString('fr-FR');
@@ -661,9 +671,11 @@
                 // Taux de complétion (basé sur l'objectif de 45000)
                 const completionRate = Math.min(100, (dbData.length / 45000) * 100);
                 document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
-
+                
                 generateCausesChart(dbData);
                 generateWordCloud(dbData);
+                generateAgeHistogram(dbData);
+                generateProfChart(dbData);
             }
         }
         function generateWordCloud(data) {
@@ -725,7 +737,7 @@
         function generateCausesChart(data) {
             const causeCounts = data.reduce((acc, row) => {
                 const cause = row['Cause de mort: espèce'] ? row['Cause de mort: espèce'].trim() : 'N/C';
-                if (cause) {
+                if (cause && cause !== 'N/C') {
                     acc[cause] = (acc[cause] || 0) + 1;
                 }
                 return acc;
@@ -750,6 +762,154 @@
                     labels: labels,
                     datasets: [{
                         label: '20 Causes de décès les plus fréquentes',
+                        data: values,
+                        backgroundColor: [
+                            '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
+                            '#B0C4DE', '#6495ED', '#00BFFF', '#5F9EA0', '#778899',
+                            '#0D6EFD', '#A9A9A9'
+                        ],
+                        borderColor: '#FFFFFF',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateAgeHistogram(data) {
+            const bins = {};
+            const labels = [];
+            for(let i = 0; i <= 100; i += 5) {
+                const label = `${i}-${i+4}`;
+                labels.push(label);
+                bins[label] = { M: 0, F: 0 };
+            }
+
+            data.forEach(row => {
+                const ageStr = row['Âge'];
+                const sex = row['Sexe'];
+                if (!ageStr || (sex !== 'M' && sex !== 'F')) return;
+                
+                const ageMatch = ageStr.match(/^(\d+)/);
+                if (!ageMatch) return;
+                
+                const age = parseInt(ageMatch[1], 10);
+                const binIndex = Math.floor(age / 5);
+                const label = `${binIndex*5}-${binIndex*5+4}`;
+
+                if (bins[label]) {
+                    bins[label][sex]++;
+                }
+            });
+
+            const maleData = labels.map(label => -bins[label].M);
+            const femaleData = labels.map(label => bins[label].F);
+
+            const ctx = document.getElementById('age-histogram-chart').getContext('2d');
+            if (ageHistogramInstance) ageHistogramInstance.destroy();
+
+            ageHistogramInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Hommes', data: maleData, backgroundColor: '#1E90FF', stack: 'stack' },
+                        { label: 'Femmes', data: femaleData, backgroundColor: '#FF69B4', stack: 'stack' }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    scales: {
+                        x: {
+                            stacked: false,
+                            ticks: {
+                                callback: value => Math.abs(value)
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            reverse: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${Math.abs(context.raw)}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateProfChart(data) {
+            const profCounts = data.reduce((acc, row) => {
+                var profession = row['Profession'] ? row['Profession'].trim() : 'N/C';
+                if (profession && profession !== 'N/C' && profession !== 'Sans état') {
+                    if (profession.startsWith("Journalière") || profession.startsWith("Journalier")){
+                        profession = "Journalier.e"
+                    }
+                    if (profession.startsWith("Ouvrière") || profession.startsWith("Ouvrier")){
+                        profession = "Ouvrier.e"
+                    }
+                    if (profession.startsWith("Couturière")||profession.startsWith('Couturier')){
+                        profession = "Couturier.e"
+                    }
+                    if (profession.startsWith("Tailleuse")||profession.startsWith('Tailleur')){
+                        profession = "Tailleur.se"
+                    }
+                    if (profession.startsWith("Porteur d'eau")||profession.startsWith("Porteuse d'eau")){
+                        profession = "Porteur.se d'eau"
+                    }
+                    if (profession.startsWith("Soldat")||profession.startsWith("Militaire")||profession.startsWith("Infanterie")||profession.startsWith("Fusilier")){
+                        profession = "Militaire"
+                    }
+                    if (profession.startsWith('Marchande')|| profession.startsWith('Marchand')){
+                        profession = "Marchand.e"
+                    }
+                    if (profession.startsWith("Agricultrice")||profession.startsWith("Agriculteur")){
+                        profession = "Agriculteur.rice"
+                    }
+                    if (profession.startsWith("Renvendeur")||profession.startsWith("Revendeuse")){
+                        profession = "Revendeur.se"
+                    }
+
+                    acc[profession] = (acc[profession] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+            const sortedProfessions = Object.entries(profCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 20); // Top 20 des professions
+
+            const labels = sortedProfessions.map(entry => entry[0]);
+            const values = sortedProfessions.map(entry => entry[1]);
+
+            const ctx = document.getElementById('prof-chart').getContext('2d');
+
+            if (profChartInstance) {
+                profChartInstance.destroy();
+            }
+
+            profChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '20 Professions les plus fréquentes',
                         data: values,
                         backgroundColor: [
                             '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
