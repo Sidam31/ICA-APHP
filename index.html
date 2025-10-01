@@ -799,11 +799,11 @@
                 const ageStr = row['Âge'];
                 const sex = row['Sexe'];
                 if (!ageStr || (sex !== 'M' && sex !== 'F')) return;
-                
-                const ageMatch = ageStr.match(/^(\d+)/);
+
+                const ageMatch = ageStr.match(/^([0-9]*[.|,]?[0-9]*)$/);
                 if (!ageMatch) return;
-                
-                const age = parseInt(ageMatch[1], 10);
+
+                const age = parseFloat(ageMatch[1].replace(',', '.'));
                 const binIndex = Math.floor(age / 5);
                 const label = `${binIndex*5}-${binIndex*5+4}`;
 
@@ -867,13 +867,13 @@
                     if (profession.startsWith("Couturière")||profession.startsWith('Couturier')){
                         profession = "Couturier.e"
                     }
-                    if (profession.startsWith("Tailleuse")||profession.startsWith('Tailleur')){
+                    if (profession === "Tailleuse" || profession === "Tailleur"){
                         profession = "Tailleur.se"
                     }
                     if (profession.startsWith("Porteur d'eau")||profession.startsWith("Porteuse d'eau")){
                         profession = "Porteur.se d'eau"
                     }
-                    if (profession.startsWith("Soldat")||profession.startsWith("Militaire")||profession.startsWith("Infanterie")||profession.startsWith("Fusilier")){
+                    if (profession.startsWith("Soldat")||profession.startsWith("Militaire")||profession.startsWith("Infanterie")||profession.startsWith("Fusilier")|| profession.startsWith("Caporal")||profession.startsWith("Garde")||profession.startsWith("Dragon")||profession.startsWith("Cavalier")||profession.startsWith("Chasseur")||profession.startsWith("Artilleur")||profession.startsWith("Voltigeur")){
                         profession = "Militaire"
                     }
                     if (profession.startsWith('Marchande')|| profession.startsWith('Marchand')){
@@ -885,6 +885,7 @@
                     if (profession.startsWith("Renvendeur")||profession.startsWith("Revendeuse")){
                         profession = "Revendeur.se"
                     }
+
 
                     acc[profession] = (acc[profession] || 0) + 1;
                 }
