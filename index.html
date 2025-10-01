@@ -605,7 +605,7 @@
                     <div id="word-cloud"></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 20 causes de décès les plus fréquentes</h3>
+                    <h3>Proportion des 15 causes de décès les plus fréquentes</h3>
                     <canvas id="causes-chart"></canvas>
                 </div>
                 <div class="big-stat-card">
@@ -613,7 +613,7 @@
                     <canvas id="age-histogram-chart"></canvas>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 20 professions les plus fréquentes</h3>
+                    <h3>Proportion des 15 professions les plus fréquentes</h3>
                     <canvas id="prof-chart"></canvas>
                 </div>
             </div>
@@ -743,10 +743,10 @@
                 return acc;
             }, {});
 
-            const sortedCauses = Object.entries(causeCounts)
+            var sortedCauses = Object.entries(causeCounts)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 20); // Top 20 des causes
-
+                .slice(0, 14); // Top 14 des causes
+            sortedCauses.push(['Autres', Object.values(causeCounts).reduce((a, b) => a + b, 0) - sortedCauses.reduce((a, [, b]) => a + b, 0)]);
             const labels = sortedCauses.map(entry => entry[0]);
             const values = sortedCauses.map(entry => entry[1]);
 
@@ -892,10 +892,10 @@
                 return acc;
             }, {});
 
-            const sortedProfessions = Object.entries(profCounts)
+            var sortedProfessions = Object.entries(profCounts)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 20); // Top 20 des professions
-
+                .slice(0, 14); // Top 14 des professions
+            sortedProfessions.push(['Autres', Object.values(profCounts).reduce((a,b) => a+b,0) - sortedProfessions.reduce((a,b) => a+b[1],0)]);
             const labels = sortedProfessions.map(entry => entry[0]);
             const values = sortedProfessions.map(entry => entry[1]);
 
