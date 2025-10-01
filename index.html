@@ -945,6 +945,7 @@
                 'Seine': '75',
                 'Seine-et-Oise': '78',
                 'Seine-et-Marne': '77',
+                'Seine et Marne': '77',
                 'Oise': '60',
                 'Aisne': '02',
                 'Nord': '59',
@@ -1031,9 +1032,9 @@
                 'Corse': '2A'
             };
             var deptCounts = {};
-            
+            var non_recognized_departments = new Set();
             data.forEach(row => {
-                const birthplace = row['Lieu de naissance '];
+                const birthplace = row['Lieu de naissance'];
                 if (!birthplace) return;
                 
                 const match = birthplace.match(/\(([^)]+)\)/);
@@ -1043,9 +1044,25 @@
                     
                     if (modernCode) {
                         deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
+                        if (modernCode === '75') {
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['93'] = (deptCounts['93'] || 0) + 1;
+                            deptCounts['94'] = (deptCounts['94'] || 0) + 1;
+                        }
+                        if (modernCode === '78') {
+                            deptCounts['91'] = (deptCounts['91'] || 0) + 1;
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['95'] = (deptCounts['95'] || 0) + 1;
+                        }
+                    }
+                    else {
+                        non_recognized_departments.add(historicalDept);
                     }
                 }
             });
+            if (non_recognized_departments.size > 0) {
+                console.warn('Départements non reconnus:', Array.from(non_recognized_departments).join(', '));
+            }
 
             const geoJsonUrl = 'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson';
             
@@ -1059,11 +1076,9 @@
                     document.getElementById('france-map').innerHTML = 
                         '<p style="color: red;">Erreur lors du chargement de la carte.</p>';
                 });
-            console.log(deptCounts);
         }
 
         function drawFranceMap(geojson, deptCounts) {
-            console.log(deptCounts);
             const container = document.getElementById('france-map');
             container.innerHTML = '';
             
@@ -1106,7 +1121,7 @@
                 .attr('fill', d => {
                     const code = d.properties.code;
                     const count = deptCounts[code] || 0;
-                    return count > 0 ? colorScale(count) : '#f0f0f0';
+                    return count > 0 ? colorScale(count*7.0) : '#f0f0f0';
                 })
                 .attr('stroke', '#333')
                 .attr('stroke-width', 0.5)
@@ -1138,7 +1153,7 @@
                 .attr('transform', `translate(${width - legendWidth - 20}, ${height - 60})`);
 
             const legendScale = d3.scaleLinear()
-                .domain([0, maxCount])
+                .domain([0, maxCount/7.0])
                 .range([0, legendWidth]);
 
             const legendAxis = d3.axisBottom(legendScale)
