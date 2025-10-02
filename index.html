@@ -616,6 +616,10 @@
                     <h3>Proportion des 15 professions les plus fréquentes</h3>
                     <canvas id="prof-chart"></canvas>
                 </div>
+                <div class="big-stat-card">
+                    <h3>Répartition géographique des lieux de naissance</h3>
+                    <div id="france-map"></div>
+                </div>
             </div>
         </section>
     </main>
@@ -676,6 +680,7 @@
                 generateWordCloud(dbData);
                 generateAgeHistogram(dbData);
                 generateProfChart(dbData);
+                generateDepartChart(dbData);
             }
         }
         function generateWordCloud(data) {
@@ -933,6 +938,247 @@
                     }
                 }
             });
+        }
+
+        function generateDepartChart(data) {
+            const historicalToModernDepts = {
+                'Seine': '75',
+                'Seine-et-Oise': '78',
+                'Seine-et-Marne': '77',
+                'Seine et Marne': '77',
+                'Oise': '60',
+                'Aisne': '02',
+                'Nord': '59',
+                'Pas-de-Calais': '62',
+                'Somme': '80',
+                'Seine inférieure': '76',
+                'Seine-Inférieure': '76',
+                'Eure': '27',
+                'Calvados': '14',
+                'Manche': '50',
+                'Orne': '61',
+                'Eure-et-Loir': '28',
+                'Loiret': '45',
+                'Loir-et-Cher': '41',
+                'Indre-et-Loire': '37',
+                'Sarthe': '72',
+                'Mayenne': '53',
+                'Maine-et-Loire': '49',
+                'Loire-Inférieure': '44',
+                'Loire-inférieure': '44',
+                'Vendée': '85',
+                'Deux-Sèvres': '79',
+                'Vienne': '86',
+                'Charente': '16',
+                'Charente-Inférieure': '17',
+                'Charente-inférieure': '17',
+                'Dordogne': '24',
+                'Gironde': '33',
+                'Landes': '40',
+                'Basses-Pyrénées': '64',
+                'Hautes-Pyrénées': '65',
+                'Haute-Garonne': '31',
+                'Ariège': '09',
+                'Aude': '11',
+                'Pyrénées-Orientales': '66',
+                'Hérault': '34',
+                'Gard': '30',
+                'Vaucluse': '84',
+                'Bouches-du-Rhône': '13',
+                'Var': '83',
+                'Basses-Alpes': '04',
+                'Hautes-Alpes': '05',
+                'Drôme': '26',
+                'Ardèche': '07',
+                'Isère': '38',
+                'Savoie': '73',
+                'Haute-Savoie': '74',
+                'Ain': '01',
+                'Rhône': '69',
+                'Loire': '42',
+                'Haute-Loire': '43',
+                'Puy-de-Dôme': '63',
+                'Cantal': '15',
+                'Corrèze': '19',
+                'Creuse': '23',
+                'Haute-Vienne': '87',
+                'Indre': '36',
+                'Cher': '18',
+                'Nièvre': '58',
+                'Allier': '03',
+                'Saône-et-Loire': '71',
+                'Côte-d\'Or': '21',
+                'Yonne': '89',
+                'Aube': '10',
+                'Haute-Marne': '52',
+                'Marne': '51',
+                'Ardennes': '08',
+                'Meuse': '55',
+                'Meurthe': '54',
+                'Moselle': '57',
+                'Vosges': '88',
+                'Haut-Rhin': '68',
+                'Bas-Rhin': '67',
+                'Doubs': '25',
+                'Jura': '39',
+                'Haute-Saône': '70',
+                'Lot-et-Garonne': '47',
+                'Lot': '46',
+                'Aveyron': '12',
+                'Tarn': '81',
+                'Tarn-et-Garonne': '82',
+                'Gers': '32',
+                'Lozère': '48',
+                'Corse': '2A'
+            };
+            var deptCounts = {};
+            var non_recognized_departments = new Set();
+            data.forEach(row => {
+                const birthplace = row['Lieu de naissance'];
+                if (!birthplace) return;
+                
+                const match = birthplace.match(/\(([^)]+)\)/);
+                if (match) {
+                    const historicalDept = match[1].trim();
+                    const modernCode = historicalToModernDepts[historicalDept];
+                    
+                    if (modernCode) {
+                        deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
+                        if (modernCode === '75') {
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['93'] = (deptCounts['93'] || 0) + 1;
+                            deptCounts['94'] = (deptCounts['94'] || 0) + 1;
+                        }
+                        if (modernCode === '78') {
+                            deptCounts['91'] = (deptCounts['91'] || 0) + 1;
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['95'] = (deptCounts['95'] || 0) + 1;
+                        }
+                    }
+                    else {
+                        non_recognized_departments.add(historicalDept);
+                    }
+                }
+            });
+            if (non_recognized_departments.size > 0) {
+                console.warn('Départements non reconnus:', Array.from(non_recognized_departments).join(', '));
+            }
+
+            const geoJsonUrl = 'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson';
+            
+            fetch(geoJsonUrl)
+                .then(response => response.json())
+                .then(geojson => {
+                    drawFranceMap(geojson, deptCounts);
+                })
+                .catch(error => {
+                    console.error('Erreur lors du chargement de la carte:', error);
+                    document.getElementById('france-map').innerHTML = 
+                        '<p style="color: red;">Erreur lors du chargement de la carte.</p>';
+                });
+        }
+
+        function drawFranceMap(geojson, deptCounts) {
+            const container = document.getElementById('france-map');
+            container.innerHTML = '';
+            
+            const width = Math.min(container.offsetWidth || 600, 600);
+            const height = 600;
+            
+            const svg = d3.select('#france-map')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const projection = d3.geoConicConformal()
+                .center([2.454071, 46.279229])
+                .scale(2800)
+                .translate([width / 2, height / 2]);
+
+            const path = d3.geoPath().projection(projection);
+
+            const maxCount = Math.max(...Object.values(deptCounts));
+            const colorScale = d3.scaleSequential()
+                .domain([0, maxCount])
+                .interpolator(d3.interpolateBlues);
+
+            const tooltip = d3.select('body').append('div')
+                .style('position', 'absolute')
+                .style('background', 'white')
+                .style('padding', '8px')
+                .style('border', '1px solid #ccc')
+                .style('border-radius', '4px')
+                .style('pointer-events', 'none')
+                .style('opacity', 0)
+                .style('font-size', '12px')
+                .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
+
+            svg.selectAll('path')
+                .data(geojson.features)
+                .enter()
+                .append('path')
+                .attr('d', path)
+                .attr('fill', d => {
+                    const code = d.properties.code;
+                    const count = deptCounts[code] || 0;
+                    return count > 0 ? colorScale(count*7.0) : '#f0f0f0';
+                })
+                .attr('stroke', '#333')
+                .attr('stroke-width', 0.5)
+                .on('mouseover', function(event, d) {
+                    const code = d.properties.code;
+                    const count = deptCounts[code] || 0;
+                    const name = d.properties.nom;
+                    
+                    d3.select(this)
+                        .attr('stroke-width', 2)
+                        .attr('stroke', '#0055A4');
+                    
+                    tooltip.transition().duration(200).style('opacity', 1);
+                    tooltip.html(`<strong>${name} (${code})</strong><br/>Naissances: ${count}`)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    d3.select(this)
+                        .attr('stroke-width', 0.5)
+                        .attr('stroke', '#333');
+                    
+                    tooltip.transition().duration(200).style('opacity', 0);
+                });
+
+            const legendWidth = 200;
+            const legendHeight = 20;
+            const legend = svg.append('g')
+                .attr('transform', `translate(${width - legendWidth - 20}, ${height - 60})`);
+
+            const legendScale = d3.scaleLinear()
+                .domain([0, maxCount/7.0])
+                .range([0, legendWidth]);
+
+            const legendAxis = d3.axisBottom(legendScale)
+                .ticks(5)
+                .tickFormat(d => Math.round(d));
+
+            const defs = svg.append('defs');
+            const linearGradient = defs.append('linearGradient')
+                .attr('id', 'legend-gradient');
+
+            linearGradient.selectAll('stop')
+                .data(d3.range(0, 1.1, 0.1))
+                .enter()
+                .append('stop')
+                .attr('offset', d => `${d * 100}%`)
+                .attr('stop-color', d => colorScale(d * maxCount));
+
+            legend.append('rect')
+                .attr('width', legendWidth)
+                .attr('height', legendHeight)
+                .style('fill', 'url(#legend-gradient)');
+
+            legend.append('g')
+                .attr('transform', `translate(0, ${legendHeight})`)
+                .call(legendAxis);
         }
         // Fonction de recherche
         function performSearch(event) {
