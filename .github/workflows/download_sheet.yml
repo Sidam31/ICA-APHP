@@ -29,7 +29,7 @@ jobs:
         run: |
           # Use curl to download the file. Replace the URL with the one you copied.
           # The -L flag follows redirects, and -o specifies the output file name.
-          curl -L "https://docs.google.com/spreadsheets/d/e/2PACX-1vR3hHPorUdCiTvs-RnMwLcSMJrpzNYGCMIAbLQEhgfB9HhnpXGZ_oOLOcQJiKf9cPBo4td9p6GrWjlV/pub?gid=1955159257&single=true&output=csv" -o Data/Relevés PIT - csv_export.csv
+          curl -L "https://docs.google.com/spreadsheets/d/e/2PACX-1vR3hHPorUdCiTvs-RnMwLcSMJrpzNYGCMIAbLQEhgfB9HhnpXGZ_oOLOcQJiKf9cPBo4td9p6GrWjlV/pub?gid=1955159257&single=true&output=csv" -o "Data/Relevés PIT - csv_export.csv"
         
       # Step 3: Commit the new or updated CSV file to the repository
       - name: Commit and push if there are changes
