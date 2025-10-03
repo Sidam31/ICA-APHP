@@ -1017,8 +1017,8 @@
                     'Haute-Saône': '70',
                     'Saône-et-Loire': '71',
                     'Sarthe': '72',
-                    'Savoie': '73',
-                    'Haute-Savoie': '74',
+                    'Mont-Blanc': '73',
+                    'Léman': '74',
                     'Seine': '75',
                     'Seine-Inférieure': '76',
                     'Seine-et-Marne': '77',
@@ -1081,6 +1081,9 @@
                             // Special case for Brabant which was split into Flemish and Walloon Brabant
                             deptCounts["B02"] = (deptCounts["B02"] || 0) + 1; // Brabant Flamand 
                         }
+                        if (modernCode === "73"){ // Mont-Blanc
+                            // Special case for Mont-Blanc which was merged into Haute-Savoie
+                            deptCounts["74"] = (deptCounts["74"] || 0) + 1; // Haute-Savoie
                     }
                     else {
                         non_recognized_departments.add(historicalDept);
