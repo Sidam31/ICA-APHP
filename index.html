@@ -1043,14 +1043,14 @@
                     'Dyle':"B01",
                     "Brabant Flamand": "B02",
                     "Jemappes": "B03",
-                    "Flandre-Orientale": "B04",
+                    "Escaut": "B04",
                     "Limbourg": "B05",
                     "Sambre-et-Meuse": "B06",
                     "Forêts": "B07",
-                    "Flandre-Occidentale": "B08",
+                    "Lys": "B08",
                     "Deux-Nèthes": "B09",
                     "Ourthe": "B10",
-                    "Brabant Wallon": "B11"
+                    "Brabant": "B11"
             };
             var deptCounts = {};
             var non_recognized_departments = new Set();
@@ -1065,15 +1065,21 @@
                     
                     if (modernCode) {
                         deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
-                        if (modernCode === '75') {
+                        if (modernCode === '75') { // Seine
+                            // Special case for Paris which was split into multiple departments
                             deptCounts['92'] = (deptCounts['92'] || 0) + 1;
                             deptCounts['93'] = (deptCounts['93'] || 0) + 1;
                             deptCounts['94'] = (deptCounts['94'] || 0) + 1;
                         }
                         if (modernCode === '78') {
+                            // Special case for Seine-et-Oise which was split into multiple departments
                             deptCounts['91'] = (deptCounts['91'] || 0) + 1;
                             deptCounts['92'] = (deptCounts['92'] || 0) + 1;
                             deptCounts['95'] = (deptCounts['95'] || 0) + 1;
+                        }
+                        if (modernCode === "B11"){ // Brabant Wallon
+                            // Special case for Brabant which was split into Flemish and Walloon Brabant
+                            deptCounts["B02"] = (deptCounts["B02"] || 0) + 1; // Brabant Flamand 
                         }
                     }
                     else {
