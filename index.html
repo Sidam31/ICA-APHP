@@ -965,6 +965,7 @@
                     'Cher': '18',
                     'Corrèze': '19',
                     'Corse': '2A',
+                    'Corse-du-Sud': '2B',
                     'Côte-d\'Or': '21',
                     'Côtes-du-Nord': '22',
                     'Creuse': '23',
@@ -1085,6 +1086,9 @@
                             // Special case for Mont-Blanc which was merged into Haute-Savoie
                             deptCounts["74"] = (deptCounts["74"] || 0) + 1; // Haute-Savoie
                         }
+                        if (modernCode === "2A") { // Corse du Sud
+                            // Special case for Corse which was split into Corse-du-Sud and Haute-Corse
+                            deptCounts["2B"] = (deptCounts["2B"] || 0) + 1; // Haute-Corse
                     }
                     else {
                         non_recognized_departments.add(historicalDept);
