@@ -27,7 +27,6 @@ jobs:
       # Step 2: Download the CSV file from the Google Sheet public URL
       - name: Download Google Sheet as CSV
         run: |
-          # Use curl to download the file. Replace the URL with the one you copied.
           # The -L flag follows redirects, and -o specifies the output file name.
           curl -L "https://docs.google.com/spreadsheets/d/e/2PACX-1vR3hHPorUdCiTvs-RnMwLcSMJrpzNYGCMIAbLQEhgfB9HhnpXGZ_oOLOcQJiKf9cPBo4td9p6GrWjlV/pub?gid=1955159257&single=true&output=csv" -o "Data/Relevés PIT - csv_export.csv"
         
@@ -38,6 +37,6 @@ jobs:
           # Message for the commit
           commit_message: "chore: Update daily data from Google Sheet"
           # Optional: The file pattern to watch for changes.
-          file_pattern: Data/Relevés PIT - csv_export.csv
+          file_pattern: "Data/Relevés PIT - csv_export.csv"
           # Optional: The branch to push to. Defaults to the current branch.
           # branch: main
