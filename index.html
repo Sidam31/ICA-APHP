@@ -370,6 +370,21 @@
             background-color: var(--gray-50);
         }
 
+        .column-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e0e0e0;
+            background-color: #f9fafb;
+        }
+        .column-controls label {
+            margin-right: 1rem;
+            cursor: pointer;
+            user-select: none;
+        }
+        .column-controls input {
+            margin-right: 0.25rem;
+        }
         /* Footer */
         footer {
             background: white;
@@ -590,8 +605,20 @@
                     <div id="word-cloud"></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 10 causes de décès les plus fréquentes</h3>
+                    <h3>Proportion des 15 causes de décès les plus fréquentes</h3>
                     <canvas id="causes-chart"></canvas>
+                </div>
+                <div class="big-stat-card">
+                    <h3>Pyramide des âges au décès</h3>
+                    <canvas id="age-histogram-chart"></canvas>
+                </div>
+                <div class="big-stat-card">
+                    <h3>Proportion des 15 professions les plus fréquentes</h3>
+                    <canvas id="prof-chart"></canvas>
+                </div>
+                <div class="big-stat-card">
+                    <h3>Répartition géographique des lieux de naissance</h3>
+                    <div id="france-map"></div>
                 </div>
             </div>
         </section>
@@ -642,6 +669,8 @@
 
         // Mise à jour des statistiques
         let causeChartInstance = null;
+        let ageHistogramInstance = null;
+        let profChartInstance = null;
         function updateStatistics() {
             if (dbData.length > 0) {
                 document.getElementById('total-entries').textContent = dbData.length.toLocaleString('fr-FR');
@@ -649,9 +678,12 @@
                 // Taux de complétion (basé sur l'objectif de 45000)
                 const completionRate = Math.min(100, (dbData.length / 45000) * 100);
                 document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
-
+                
                 generateCausesChart(dbData);
                 generateWordCloud(dbData);
+                generateAgeHistogram(dbData);
+                generateProfChart(dbData);
+                generateDepartChart(dbData);
             }
         }
         function generateWordCloud(data) {
@@ -719,10 +751,10 @@
                 return acc;
             }, {});
 
-            const sortedCauses = Object.entries(causeCounts)
+            var sortedCauses = Object.entries(causeCounts)
                 .sort(([, a], [, b]) => b - a)
-                .slice(0, 10); // Top 10 des causes
-
+                .slice(0, 14); // Top 14 des causes
+            sortedCauses.push(['Autres', Object.values(causeCounts).reduce((a, b) => a + b, 0) - sortedCauses.reduce((a, [, b]) => a + b, 0)]);
             const labels = sortedCauses.map(entry => entry[0]);
             const values = sortedCauses.map(entry => entry[1]);
 
@@ -761,6 +793,392 @@
                 }
             });
         }
+
+        function generateAgeHistogram(data) {
+            const bins = {};
+            const labels = [];
+            for(let i = 0; i <= 100; i += 5) {
+                const label = `${i}-${i+4}`;
+                labels.push(label);
+                bins[label] = { M: 0, F: 0 };
+            }
+
+            data.forEach(row => {
+                const ageStr = row['Âge'];
+                const sex = row['Sexe'];
+                if (!ageStr || (sex !== 'M' && sex !== 'F')) return;
+
+                const ageMatch = ageStr.match(/^([0-9]*[.|,]?[0-9]*)$/);
+                if (!ageMatch) return;
+
+                const age = parseFloat(ageMatch[1].replace(',', '.'));
+                const binIndex = Math.floor(age / 5);
+                const label = `${binIndex*5}-${binIndex*5+4}`;
+
+                if (bins[label]) {
+                    bins[label][sex]++;
+                }
+            });
+
+            const maleData = labels.map(label => -bins[label].M);
+            const femaleData = labels.map(label => bins[label].F);
+
+            const ctx = document.getElementById('age-histogram-chart').getContext('2d');
+            if (ageHistogramInstance) ageHistogramInstance.destroy();
+
+            ageHistogramInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Hommes', data: maleData, backgroundColor: '#1E90FF', stack: 'stack' },
+                        { label: 'Femmes', data: femaleData, backgroundColor: '#FF69B4', stack: 'stack' }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    scales: {
+                        x: {
+                            stacked: false,
+                            ticks: {
+                                callback: value => Math.abs(value)
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            reverse: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => `${context.dataset.label}: ${Math.abs(context.raw)}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateProfChart(data) {
+            const profCounts = data.reduce((acc, row) => {
+                var profession = row['Profession'] ? row['Profession'].trim() : 'N/C';
+                if (profession && profession !== 'N/C' && profession !== 'Sans état') {
+                    if (profession.startsWith("Journalière") || profession.startsWith("Journalier")){
+                        profession = "Journalier.e"
+                    }
+                    if (profession.startsWith("Ouvrière") || profession.startsWith("Ouvrier")){
+                        profession = "Ouvrier.e"
+                    }
+                    if (profession.startsWith("Couturière")||profession.startsWith('Couturier')){
+                        profession = "Couturier.e"
+                    }
+                    if (profession === "Tailleuse" || profession === "Tailleur"){
+                        profession = "Tailleur.se"
+                    }
+                    if (profession.startsWith("Porteur d'eau")||profession.startsWith("Porteuse d'eau")){
+                        profession = "Porteur.se d'eau"
+                    }
+                    if (profession.startsWith("Soldat")||profession.startsWith("Militaire")||profession.startsWith("Infanterie")||profession.startsWith("Fusilier")|| profession.startsWith("Caporal")||profession.startsWith("Garde")||profession.startsWith("Dragon")||profession.startsWith("Cavalier")||profession.startsWith("Chasseur")||profession.startsWith("Artilleur")||profession.startsWith("Voltigeur")){
+                        profession = "Militaire"
+                    }
+                    if (profession.startsWith('Marchande')|| profession.startsWith('Marchand')){
+                        profession = "Marchand.e"
+                    }
+                    if (profession.startsWith("Agricultrice")||profession.startsWith("Agriculteur")){
+                        profession = "Agriculteur.rice"
+                    }
+                    if (profession.startsWith("Renvendeur")||profession.startsWith("Revendeuse")){
+                        profession = "Revendeur.se"
+                    }
+
+
+                    acc[profession] = (acc[profession] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+            var sortedProfessions = Object.entries(profCounts)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 14); // Top 14 des professions
+            sortedProfessions.push(['Autres', Object.values(profCounts).reduce((a,b) => a+b,0) - sortedProfessions.reduce((a,b) => a+b[1],0)]);
+            const labels = sortedProfessions.map(entry => entry[0]);
+            const values = sortedProfessions.map(entry => entry[1]);
+
+            const ctx = document.getElementById('prof-chart').getContext('2d');
+
+            if (profChartInstance) {
+                profChartInstance.destroy();
+            }
+
+            profChartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '20 Professions les plus fréquentes',
+                        data: values,
+                        backgroundColor: [
+                            '#0055A4', '#1E90FF', '#4682B4', '#87CEEB', '#ADD8E6',
+                            '#B0C4DE', '#6495ED', '#00BFFF', '#5F9EA0', '#778899',
+                            '#0D6EFD', '#A9A9A9'
+                        ],
+                        borderColor: '#FFFFFF',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function generateDepartChart(data) {
+            const historicalToModernDepts = {
+                'Seine': '75',
+                'Seine-et-Oise': '78',
+                'Seine-et-Marne': '77',
+                'Oise': '60',
+                'Aisne': '02',
+                'Nord': '59',
+                'Pas-de-Calais': '62',
+                'Somme': '80',
+                'Seine-Inférieure': '76',
+                'Eure': '27',
+                'Calvados': '14',
+                'Manche': '50',
+                'Orne': '61',
+                'Eure-et-Loir': '28',
+                'Loiret': '45',
+                'Loir-et-Cher': '41',
+                'Indre-et-Loire': '37',
+                'Sarthe': '72',
+                'Mayenne': '53',
+                'Maine-et-Loire': '49',
+                'Loire-Inférieure': '44',
+                'Vendée': '85',
+                'Deux-Sèvres': '79',
+                'Vienne': '86',
+                'Charente': '16',
+                'Charente-Inférieure': '17',
+                'Dordogne': '24',
+                'Gironde': '33',
+                'Landes': '40',
+                'Basses-Pyrénées': '64',
+                'Hautes-Pyrénées': '65',
+                'Haute-Garonne': '31',
+                'Ariège': '09',
+                'Aude': '11',
+                'Pyrénées-Orientales': '66',
+                'Hérault': '34',
+                'Gard': '30',
+                'Vaucluse': '84',
+                'Bouches-du-Rhône': '13',
+                'Var': '83',
+                'Basses-Alpes': '04',
+                'Hautes-Alpes': '05',
+                'Drôme': '26',
+                'Ardèche': '07',
+                'Isère': '38',
+                'Savoie': '73',
+                'Haute-Savoie': '74',
+                'Ain': '01',
+                'Rhône': '69',
+                'Loire': '42',
+                'Haute-Loire': '43',
+                'Puy-de-Dôme': '63',
+                'Cantal': '15',
+                'Corrèze': '19',
+                'Creuse': '23',
+                'Haute-Vienne': '87',
+                'Indre': '36',
+                'Cher': '18',
+                'Nièvre': '58',
+                'Allier': '03',
+                'Saône-et-Loire': '71',
+                'Côte-d\'Or': '21',
+                'Yonne': '89',
+                'Aube': '10',
+                'Haute-Marne': '52',
+                'Marne': '51',
+                'Ardennes': '08',
+                'Meuse': '55',
+                'Meurthe': '54',
+                'Moselle': '57',
+                'Vosges': '88',
+                'Haut-Rhin': '68',
+                'Bas-Rhin': '67',
+                'Doubs': '25',
+                'Jura': '39',
+                'Haute-Saône': '70',
+                'Lot-et-Garonne': '47',
+                'Lot': '46',
+                'Aveyron': '12',
+                'Tarn': '81',
+                'Tarn-et-Garonne': '82',
+                'Gers': '32',
+                'Lozère': '48',
+                'Corse': '2A'
+            };
+            var deptCounts = {};
+            var non_recognized_departments = new Set();
+            data.forEach(row => {
+                const birthplace = row['Lieu de naissance'];
+                if (!birthplace) return;
+                
+                const match = birthplace.match(/\(([^)]+)\)/);
+                if (match) {
+                    const historicalDept = match[1].trim();
+                    const modernCode = historicalToModernDepts[historicalDept];
+                    
+                    if (modernCode) {
+                        deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
+                        if (modernCode === '75') {
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['93'] = (deptCounts['93'] || 0) + 1;
+                            deptCounts['94'] = (deptCounts['94'] || 0) + 1;
+                        }
+                        if (modernCode === '78') {
+                            deptCounts['91'] = (deptCounts['91'] || 0) + 1;
+                            deptCounts['92'] = (deptCounts['92'] || 0) + 1;
+                            deptCounts['95'] = (deptCounts['95'] || 0) + 1;
+                        }
+                    }
+                    else {
+                        non_recognized_departments.add(historicalDept);
+                    }
+                }
+            });
+            if (non_recognized_departments.size > 0) {
+                console.warn('Départements non reconnus:', Array.from(non_recognized_departments).join(', '));
+            }
+
+            const geoJsonUrl = 'https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements.geojson';
+            
+            fetch(geoJsonUrl)
+                .then(response => response.json())
+                .then(geojson => {
+                    drawFranceMap(geojson, deptCounts);
+                })
+                .catch(error => {
+                    console.error('Erreur lors du chargement de la carte:', error);
+                    document.getElementById('france-map').innerHTML = 
+                        '<p style="color: red;">Erreur lors du chargement de la carte.</p>';
+                });
+        }
+
+        function drawFranceMap(geojson, deptCounts) {
+            const container = document.getElementById('france-map');
+            container.innerHTML = '';
+            
+            const width = Math.min(container.offsetWidth || 600, 600);
+            const height = 600;
+            
+            const svg = d3.select('#france-map')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const projection = d3.geoConicConformal()
+                .center([2.454071, 46.279229])
+                .scale(2800)
+                .translate([width / 2, height / 2]);
+
+            const path = d3.geoPath().projection(projection);
+
+            const maxCount = Math.max(...Object.values(deptCounts));
+            const colorScale = d3.scaleSequential()
+                .domain([0, maxCount])
+                .interpolator(d3.interpolateBlues);
+
+            const tooltip = d3.select('body').append('div')
+                .style('position', 'absolute')
+                .style('background', 'white')
+                .style('padding', '8px')
+                .style('border', '1px solid #ccc')
+                .style('border-radius', '4px')
+                .style('pointer-events', 'none')
+                .style('opacity', 0)
+                .style('font-size', '12px')
+                .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
+
+            svg.selectAll('path')
+                .data(geojson.features)
+                .enter()
+                .append('path')
+                .attr('d', path)
+                .attr('fill', d => {
+                    const code = d.properties.code;
+                    const count = deptCounts[code] || 0;
+                    return count > 0 ? colorScale(count*7.0) : '#f0f0f0';
+                })
+                .attr('stroke', '#333')
+                .attr('stroke-width', 0.5)
+                .on('mouseover', function(event, d) {
+                    const code = d.properties.code;
+                    const count = deptCounts[code] || 0;
+                    const name = d.properties.nom;
+                    
+                    d3.select(this)
+                        .attr('stroke-width', 2)
+                        .attr('stroke', '#0055A4');
+                    
+                    tooltip.transition().duration(200).style('opacity', 1);
+                    tooltip.html(`<strong>${name} (${code})</strong><br/>Naissances: ${count}`)
+                        .style('left', (event.pageX + 10) + 'px')
+                        .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    d3.select(this)
+                        .attr('stroke-width', 0.5)
+                        .attr('stroke', '#333');
+                    
+                    tooltip.transition().duration(200).style('opacity', 0);
+                });
+
+            const legendWidth = 200;
+            const legendHeight = 20;
+            const legend = svg.append('g')
+                .attr('transform', `translate(${width - legendWidth - 20}, ${height - 60})`);
+
+            const legendScale = d3.scaleLinear()
+                .domain([0, maxCount/7.0])
+                .range([0, legendWidth]);
+
+            const legendAxis = d3.axisBottom(legendScale)
+                .ticks(5)
+                .tickFormat(d => Math.round(d));
+
+            const defs = svg.append('defs');
+            const linearGradient = defs.append('linearGradient')
+                .attr('id', 'legend-gradient');
+
+            linearGradient.selectAll('stop')
+                .data(d3.range(0, 1.1, 0.1))
+                .enter()
+                .append('stop')
+                .attr('offset', d => `${d * 100}%`)
+                .attr('stop-color', d => colorScale(d * maxCount));
+
+            legend.append('rect')
+                .attr('width', legendWidth)
+                .attr('height', legendHeight)
+                .style('fill', 'url(#legend-gradient)');
+
+            legend.append('g')
+                .attr('transform', `translate(0, ${legendHeight})`)
+                .call(legendAxis);
+        }
         // Fonction de recherche
         function performSearch(event) {
             if (event) event.preventDefault();
@@ -771,7 +1189,7 @@
                 { id: 'nom', key: 'NOM' },
                 { id: 'prenom', key: 'Prénoms' },
                 { id: 'date-deces', key: 'Date de décès' },
-                { id: 'LieuNaissance', key: 'Lieu de naissance ' },
+                { id: 'LieuNaissance', key: 'Lieu de naissance' },
             ];
 
             searchCriteria.forEach(criterion => {
@@ -799,6 +1217,21 @@
         }
 
         // Affichage des résultats
+        function check_listener(e){
+            console.log('Toggling column:', e.target.value, 'Checked:', e.target.checked);
+            const table = document.getElementById('results-table');
+            const columnIndex = e.target.value;
+            // Get all cells in this column (header and body cells)
+            const cells = table.querySelectorAll(`th[data-column="${columnIndex}"], td:nth-child(${parseInt(columnIndex) + 1})`);
+            
+            // Toggle the 'hidden' class based on checkbox state
+            cells.forEach(cell => {
+                cell.style.visibility = e.target.checked ? '' : 'collapse';
+                cell.style.display = e.target.checked ? '' : 'none';
+                cell.classList.toggle('hidden', !e.target.checked);
+            });
+        }
+
         function displayResults(results) {
             const resultsContainer = document.getElementById('search-results');
             
@@ -809,20 +1242,24 @@
 
             let tableHTML = `
                 <h3>${results.length} résultat(s) trouvé(s)</h3>
+                
                 <div class="table-container">
-                    <table>
+                    <strong>Show/Hide Columns:</strong>
+                    <div id="column-controls" class="column-controls">
+                    </div>
+                    <table id="results-table">
                         <thead>
                             <tr>
-                                <th>Nom</th>
-                                <th>Prénoms</th>
-                                <th>Date de décès</th>
-                                <th>Âge</th>
-                                <th>Lieu de naissance</th>
-                                <th>Profession</th>
-                                <th>Cause du décès</th>
-                                <th>Nom conjoint</th>
-                                <th>Prénoms conjoint</th>
-                                <th>Permalien</th>
+                                <th data-column="0">Nom</th>
+                                <th data-column="1">Prénoms</th>
+                                <th data-column="2">Date de décès</th>
+                                <th data-column="3">Âge</th>
+                                <th data-column="4">Lieu de naissance</th>
+                                <th data-column="5">Profession</th>
+                                <th data-column="6">Cause du décès</th>
+                                <th data-column="7">Nom conjoint</th>
+                                <th data-column="8">Prénoms conjoint</th>
+                                <th data-column="9">Permalien</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -831,16 +1268,16 @@
             results.slice(0, 200).forEach(item => { // Limiter à 200 résultats pour les performances
                 tableHTML += `
                     <tr>
-                        <td>${item['NOM'] || '-'}</td>
-                        <td>${item['Prénoms'] || '-'}</td>
-                        <td>${item['Date de décès'] || '-'}</td>
-                        <td>${item['Âge'] || '-'}</td>
-                        <td>${item['Lieu de naissance '] || '-'}</td>
-                        <td>${item['Profession'] || '-'}</td>
-                        <td>${item['Cause de mort: espèce'] || '-'}</td>
-                        <td>${item['NOM CONJOINT'] || '-'}</td>
-                        <td>${item['Prénoms Conjoint'] || '-'}</td>
-                        <td><a href='${item['Permalien'] || '-'}'>lien</a></td>
+                        <td class="nth-child">${item['NOM'] || '-'}</td>
+                        <td class="nth-child">${item['Prénoms'] || '-'}</td>
+                        <td class="nth-child">${item['Date de décès'] || '-'}</td>
+                        <td class="nth-child">${item['Âge'] || '-'}</td>
+                        <td class="nth-child">${item['Lieu de naissance'] || '-'}</td>
+                        <td class="nth-child">${item['Profession'] || '-'}</td>
+                        <td class="nth-child">${item['Cause de mort: espèce'] || '-'}</td>
+                        <td class="nth-child">${item['NOM CONJOINT'] || '-'}</td>
+                        <td class="nth-child">${item['Prénoms Conjoint'] || '-'}</td>
+                        <td class="nth-child"><a href='${item['Permalien'] || '-'}'>lien</a></td>
                     </tr>
                 `;
             });
@@ -857,6 +1294,30 @@
 
             tableHTML += '</tbody></table></div>';
             resultsContainer.innerHTML = tableHTML;
+
+            const table = document.getElementById('results-table');
+            const headers = table.querySelectorAll('thead th');
+            const controlsContainer = document.getElementById('column-controls');
+            const tbody = table.querySelector('tbody');
+
+            // --- Part 1: Column Toggling (Show/Hide) ---
+            headers.forEach((header, index) => {
+                if (index < 2) return; // Skip the first two columns (always visible)
+                // Create a checkbox for each column header
+                const label = document.createElement('label');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = index;
+                checkbox.checked = true; // All columns are visible by default
+
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(header.textContent));
+                controlsContainer.appendChild(label);
+
+                // Add event listener to the checkbox
+                checkbox.addEventListener('change', (e) => check_listener(e));
+            });
+            
         }
 
         // Navigation entre les pages
