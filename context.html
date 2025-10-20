@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Pitié - Vie Parisienne 1809-1860</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', serif;
+            background: #ffffff;
+            color: #1a1a1a;
+            overflow-x: hidden;
+        }
+
+        .hero {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #003087 100%);
+            background-size: 200% 200%;
+            animation: gradientShift 10s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .hero-content {
+            text-align: center;
+            z-index: 2;
+            animation: fadeInUp 1.5s ease-out;
+        }
+
+        .hero h1 {
+            font-size: 4.5rem;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            letter-spacing: 2px;
+        }
+
+        .hero-subtitle {
+            font-size: 1.5rem;
+            color: #e0e7ff;
+            font-style: italic;
+            margin-bottom: 2rem;
+        }
+
+        .hero-description {
+            max-width: 700px;
+            margin: 0 auto;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            color: #e0e7ff;
+        }
+
+        .timeline-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 5rem 2rem;
+            background: #ffffff;
+        }
+
+        .section-title {
+            font-size: 2.8rem;
+            text-align: center;
+            margin-bottom: 4rem;
+            color: #1e40af;
+            position: relative;
+            font-weight: bold;
+        }
+
+        .section-title::after {
+            content: '';
+            display: block;
+            width: 120px;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #1e40af, transparent);
+            margin: 1.5rem auto;
+        }
+
+        .timeline {
+            position: relative;
+            padding: 2rem 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
+            height: 100%;
+            background: linear-gradient(180deg, #1e40af, #003087);
+        }
+
+        .timeline-item {
+            display: flex;
+            margin-bottom: 5rem;
+            position: relative;
+            opacity: 0;
+            animation: fadeInItem 0.8s ease-out forwards;
+        }
+
+        .timeline-item:nth-child(even) {
+            flex-direction: row-reverse;
+        }
+
+        .timeline-content {
+            width: 45%;
+            padding: 2.5rem;
+            background: #ffffff;
+            border-radius: 15px;
+            border: 2px solid #1e40af;
+            box-shadow: 0 5px 20px rgba(30, 64, 175, 0.15);
+            transition: all 0.4s ease;
+            cursor: pointer;
+        }
+
+        .timeline-content:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(30, 64, 175, 0.25);
+            border-color: #003087;
+        }
+
+        .timeline-year {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e40af;
+            color: #ffffff;
+            padding: 0.8rem 2rem;
+            border-radius: 30px;
+            font-weight: bold;
+            font-size: 1.3rem;
+            box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
+            z-index: 10;
+        }
+
+        .timeline-content h3 {
+            color: #1e40af;
+            margin-bottom: 1rem;
+            font-size: 1.9rem;
+            font-weight: bold;
+        }
+
+        .timeline-content p {
+            line-height: 1.9;
+            color: #374151;
+            margin-bottom: 1rem;
+        }
+
+        .population-tag {
+            display: inline-block;
+            background: #dbeafe;
+            color: #1e40af;
+            padding: 0.4rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+
+        .source-link {
+            display: inline-block;
+            margin-top: 1rem;
+            color: #1e40af;
+            text-decoration: none;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            border-bottom: 2px solid transparent;
+        }
+
+        .source-link:hover {
+            color: #003087;
+            border-bottom: 2px solid #003087;
+        }
+
+        .source-link::before {
+            content: '📚 ';
+        }
+
+        .context-section {
+            max-width: 1200px;
+            margin: 5rem auto;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, #f0f7ff 0%, #e0e7ff 100%);
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(30, 64, 175, 0.1);
+        }
+
+        .context-section h2 {
+            color: #1e40af;
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .context-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 3rem;
+            margin-top: 3rem;
+        }
+
+        .context-card {
+            background: #ffffff;
+            padding: 2.5rem;
+            border-radius: 15px;
+            border-left: 5px solid #1e40af;
+            box-shadow: 0 5px 15px rgba(30, 64, 175, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .context-card:hover {
+            transform: translateX(10px);
+            box-shadow: 0 8px 25px rgba(30, 64, 175, 0.2);
+        }
+
+        .context-card h3 {
+            color: #1e40af;
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .context-card p {
+            line-height: 1.9;
+            color: #374151;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .icon {
+            font-size: 1.5rem;
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            animation: bounce 2s infinite;
+        }
+
+        .scroll-indicator::before {
+            content: '↓';
+            font-size: 2.5rem;
+            color: #ffffff;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateX(-50%) translateY(0);
+            }
+            40% {
+                transform: translateX(-50%) translateY(-15px);
+            }
+            60% {
+                transform: translateX(-50%) translateY(-8px);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInItem {
+            from {
+                opacity: 0;
+                transform: translateX(-40px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            .timeline::before {
+                left: 30px;
+            }
+            .timeline-content {
+                width: calc(100% - 80px);
+                margin-left: 80px;
+            }
+            .timeline-item:nth-child(even) .timeline-content {
+                margin-left: 80px;
+            }
+            .timeline-year {
+                left: 30px;
+            }
+            .context-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <section class="hero">
+        <div class="hero-content">
+            <h1>La Pitié</h1>
+            <p class="hero-subtitle">Registres de Décès • Paris 1809-1860</p>
+            <p class="hero-description">
+                Découvrez l'histoire méconnue de Paris à travers les archives hospitalières de La Pitié-Salpêtrière, 
+                témoin privilégié d'un demi-siècle de bouleversements politiques, sociaux et sanitaires dans la capitale.
+            </p>
+        </div>
+        <div class="scroll-indicator"></div>
+    </section>
+
+    <div class="timeline-container">
+        <h2 class="section-title">Chronologie Parisienne 1809-1860</h2>
+        <div class="timeline">
+            <div class="timeline-item" style="animation-delay: 0.2s;">
+                <div class="timeline-year">1809</div>
+                <div class="timeline-content">
+                    <h3>L'Empire au Zénith</h3>
+                    <p>Napoléon Ier règne sur l'Europe et Paris s'affirme comme capitale impériale. L'Hôpital de la Pitié, fondé en 1612, accueille les malades pauvres du faubourg Saint-Marcel, quartier populaire et laborieux de la rive gauche. Les conditions sanitaires restent précaires malgré les progrès de la médecine hospitalière.</p>
+                    <div class="population-tag">👥 Population : ~600 000 habitants</div>
+                    <a href="https://www.aphp.fr/pitie-salpetriere" class="source-link" target="_blank">AP-HP - Histoire de la Pitié-Salpêtrière</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.3s;">
+                <div class="timeline-year">1814</div>
+                <div class="timeline-content">
+                    <h3>La Bataille de Paris</h3>
+                    <p>Le 30 mars 1814, les armées coalisées attaquent Paris. La bataille fait rage aux barrières de la ville. L'Hôpital de la Pitié accueille de nombreux blessés militaires en provenance du Val-de-Grâce qui est débordé. Les registres témoignent de l'afflux de soldats français et étrangers dans ses salles déjà surpeuplées.</p>
+                    <div class="population-tag">👥 Population : ~620 000 habitants</div>
+                    <a href="https://www.paris.fr/pages/l-histoire-de-paris-2329" class="source-link" target="_blank">Paris.fr - Histoire de Paris</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.4s;">
+                <div class="timeline-year">1815</div>
+                <div class="timeline-content">
+                    <h3>Chute de l'Empire et Restauration</h3>
+                    <p>Waterloo marque la fin définitive de l'ère napoléonienne. Louis XVIII monte sur le trône. Les hôpitaux parisiens sont submergés par les blessés de guerre et les épidémies qui suivent les conflits. La mortalité hospitalière reste très élevée, particulièrement dans les quartiers pauvres.</p>
+                    <div class="population-tag">👥 Population : ~640 000 habitants</div>
+                    <a href="https://www.histoire-image.org/etudes/paris-1815-1850" class="source-link" target="_blank">Histoire par l'image</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.5s;">
+                <div class="timeline-year">1832</div>
+                <div class="timeline-content">
+                    <h3>L'Épidémie de Choléra</h3>
+                    <p>Paris est frappée par une terrible épidémie de choléra qui décime la population : environ 18 000 morts entre mars et septembre.</p>
+                    <div class="population-tag">👥 Population : ~785 000 habitants</div>
+                    <a href="https://www.bnf.fr/fr/le-cholera-paris" class="source-link" target="_blank">BnF - Le choléra à Paris</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.6s;">
+                <div class="timeline-year">1848</div>
+                <div class="timeline-content">
+                    <h3>Le Printemps des Peuples</h3>
+                    <p>Révolution de février : Louis-Philippe abdique et la Deuxième République est proclamée. Les journées de juin voient Paris se couvrir de barricades. Les affrontements violents font des milliers de victimes.</p>
+                    <div class="population-tag">👥 Population : ~1 050 000 habitants</div>
+                    <a href="https://www.assemblee-nationale.fr/histoire/1848/" class="source-link" target="_blank">Assemblée nationale - 1848</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.7s;">
+                <div class="timeline-year">1853</div>
+                <div class="timeline-content">
+                    <h3>Les Grands Travaux d'Haussmann</h3>
+                    <p>Le baron Haussmann, nommé préfet de la Seine par Napoléon III, lance la transformation radicale de Paris. Les quartiers insalubres sont rasés, des boulevards percés. Des dizaines de milliers d'ouvriers affluent vers la capitale pour ces chantiers titanesques.</p>
+                    <div class="population-tag">👥 Population : ~1 175 000 habitants</div>
+                    <a href="https://www.paris.fr/pages/les-transformations-de-paris-sous-le-second-empire-3638" class="source-link" target="_blank">Paris.fr - Transformations haussmanniennes</a>
+                </div>
+            </div>
+
+            <div class="timeline-item" style="animation-delay: 0.8s;">
+                <div class="timeline-year">1860</div>
+                <div class="timeline-content">
+                    <h3>Paris s'Agrandit : L'Annexion</h3>
+                    <p>Le 1er janvier 1860, Paris annexe les communes limitrophes de Belleville, La Villette, Grenelle, Vaugirard et autres faubourgs. La ville passe de 12 à 20 arrondissements. Cette extension administrative intègre officiellement des zones déjà densément peuplées où La Pitié soignait de nombreux patients venus de ces faubourgs périphériques.</p>
+                    <div class="population-tag">👥 Population : ~1 600 000 habitants</div>
+                    <a href="https://www.archives.paris.fr" class="source-link" target="_blank">Archives de Paris</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <section class="context-section">
+        <h2>Contexte Social et Sanitaire (1809-1860)</h2>
+        
+        <div class="context-grid">
+            <div class="context-card">
+                <h3><span class="icon">🏥</span> Les Maladies de l'Époque</h3>
+                <p>Le Paris du XIXe siècle est marqué par des conditions sanitaires déplorables. Les maladies infectieuses dominent : tuberculose (appelée phtisie), typhoïde, variole et choléra déciment la population. La promiscuité dans les quartiers ouvriers, l'absence d'eau courante et les égouts à ciel ouvert favorisent la propagation des épidémies.</p>
+                <p>Des pathologies liées à la malnutrition, l'alcoolisme et les conditions de travail éprouvantes sont attendus dans les registres de la Pitié. Les femmes meurent fréquemment en couches, faute d'hygiène médicale. Les nourrissons sont particulièrement vulnérables avec une mortalité infantile dépassant 20%.</p>
+            </div>
+
+            <div class="context-card">
+                <h3><span class="icon">⚒️</span> Les Professions Populaires</h3>
+                <p>Le faubourg Saint-Marcel, où se situe La Pitié, concentre une population ouvrière laborieuse. Les registres mentionnent des blanchisseuses, tanneurs, teinturiers, cordonniers, maçons, journaliers et porteurs d'eau. Ces métiers manuels exposent à des risques professionnels considérables.</p>
+                <p>Avec les travaux d'Haussmann à partir de 1853, affluent terrassiers, carriers et ouvriers du bâtiment venus de province. Les accidents mortels sur les chantiers sont fréquents : chutes, effondrements, blessures par outils. Les femmes travaillent souvent comme couturières, domestiques ou ouvrières en manufacture, dans des conditions d'exploitation extrême.</p>
+            </div>
+
+            <div class="context-card">
+                <h3><span class="icon">🚶</span> Mouvements de Population</h3>
+                <p>Entre 1809 et 1860, Paris connaît une croissance démographique spectaculaire, passant de 600 000 à 1,6 million d'habitants. Cet afflux massif provient de l'exode rural : paysans bretons, auvergnats, limousins et savoyards fuient la misère des campagnes pour chercher fortune dans la capitale.</p>
+                <p>Ces migrants s'entassent dans les garnis insalubres des faubourgs populaires. Le faubourg Saint-Marcel, avec ses ruelles étroites et ses logements surpeuplés, accueille ces nouveaux Parisiens déracinés. Beaucoup meurent isolés, loin de leur famille d'origine.</p>
+                <p>L'annexion de 1860 officialise ce que Paris est déjà devenu : une métropole industrielle tentaculaire où se côtoient bourgeoisie des nouveaux boulevards et misère des quartiers populaires, cette dernière trouvant refuge et parfois son dernier repos dans les salles de l'hôpital de la Pitié.</p>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        const observerOptions = {
+            threshold: 0.15,
+            rootMargin: '0px 0px -100px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateX(0)';
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.timeline-item').forEach(item => {
+            observer.observe(item);
+        });
+
+        document.querySelectorAll('.timeline-content').forEach(content => {
+            content.addEventListener('click', function() {
+                this.style.background = '#f0f7ff';
+                setTimeout(() => {
+                    this.style.background = '#ffffff';
+                }, 400);
+            });
+        });
+
+        const contextCards = document.querySelectorAll('.context-card');
+        const contextObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, { threshold: 0.2 });
+
+        contextCards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(30px)';
+            card.style.transition = `all 0.6s ease ${index * 0.2}s`;
+            contextObserver.observe(card);
+        });
+    </script>
+</body>
+</html>
