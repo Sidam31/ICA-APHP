@@ -10,21 +10,33 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+        :root {
+            --french-blue: #0055A4;
+            --french-blue-dark: #003d7a;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-600: #4b5563;
+            --gray-700: #374151;
+            --gray-800: #1f2937;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
         body {
-            font-family: 'Georgia', serif;
+            font-family: 'Inter', sans-serif;
             background: #ffffff;
             color: #1a1a1a;
             overflow-x: hidden;
         }
 
         .hero {
-            height: 100vh;
+            height: 500px;
             display: flex;
             align-items: center;
             justify-content: center;
             position: relative;
-            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #003087 100%);
+            background: linear-gradient(135deg, var(--french-blue) 0%, #1e3a8a 50%, var(--french-blue-dark) 100%);
             background-size: 200% 200%;
             animation: gradientShift 10s ease infinite;
         }
@@ -74,7 +86,7 @@
             font-size: 2.8rem;
             text-align: center;
             margin-bottom: 4rem;
-            color: #1e40af;
+            color: var(--french-blue);
             position: relative;
             font-weight: bold;
         }
@@ -84,7 +96,7 @@
             display: block;
             width: 120px;
             height: 4px;
-            background: linear-gradient(90deg, transparent, #1e40af, transparent);
+            background: linear-gradient(90deg, transparent, var(--french-blue), transparent);
             margin: 1.5rem auto;
         }
 
@@ -100,7 +112,7 @@
             transform: translateX(-50%);
             width: 3px;
             height: 100%;
-            background: linear-gradient(180deg, #1e40af, #003087);
+            background: linear-gradient(180deg,var(--french-blue), var(--french-blue-dark));
         }
 
         .timeline-item {
@@ -120,7 +132,7 @@
             padding: 2.5rem;
             background: #ffffff;
             border-radius: 15px;
-            border: 2px solid #1e40af;
+            border: 2px solid var(--french-blue);
             box-shadow: 0 5px 20px rgba(30, 64, 175, 0.15);
             transition: all 0.4s ease;
             cursor: pointer;
@@ -129,14 +141,14 @@
         .timeline-content:hover {
             transform: translateY(-8px);
             box-shadow: 0 15px 40px rgba(30, 64, 175, 0.25);
-            border-color: #003087;
+            border-color: var(--french-blue-dark);
         }
 
         .timeline-year {
             position: absolute;
             left: 50%;
             transform: translateX(-50%);
-            background: #1e40af;
+            background: var(--french-blue);
             color: #ffffff;
             padding: 0.8rem 2rem;
             border-radius: 30px;
@@ -147,7 +159,7 @@
         }
 
         .timeline-content h3 {
-            color: #1e40af;
+            color: var(--french-blue);
             margin-bottom: 1rem;
             font-size: 1.9rem;
             font-weight: bold;
@@ -162,7 +174,7 @@
         .population-tag {
             display: inline-block;
             background: #dbeafe;
-            color: #1e40af;
+            color: var(--french-blue);
             padding: 0.4rem 1rem;
             border-radius: 20px;
             font-size: 0.9rem;
@@ -173,7 +185,7 @@
         .source-link {
             display: inline-block;
             margin-top: 1rem;
-            color: #1e40af;
+            color: var(--french-blue);
             text-decoration: none;
             font-weight: bold;
             transition: all 0.3s ease;
@@ -181,8 +193,8 @@
         }
 
         .source-link:hover {
-            color: #003087;
-            border-bottom: 2px solid #003087;
+            color: var(--french-blue-dark);
+            border-bottom: 2px solid var(--french-blue-dark);
         }
 
         .source-link::before {
@@ -199,7 +211,7 @@
         }
 
         .context-section h2 {
-            color: #1e40af;
+            color: var(--french-blue);
             font-size: 2.5rem;
             margin-bottom: 2rem;
             text-align: center;
@@ -217,7 +229,7 @@
             background: #ffffff;
             padding: 2.5rem;
             border-radius: 15px;
-            border-left: 5px solid #1e40af;
+            border-left: 5px solid var(--french-blue);
             box-shadow: 0 5px 15px rgba(30, 64, 175, 0.1);
             transition: all 0.3s ease;
         }
@@ -228,7 +240,7 @@
         }
 
         .context-card h3 {
-            color: #1e40af;
+            color: var(--french-blue);
             font-size: 1.8rem;
             margin-bottom: 1.5rem;
             display: flex;
