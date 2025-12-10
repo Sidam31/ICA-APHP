@@ -9,6 +9,9 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/jasondavies/d3-cloud@v1.2.7/build/d3.layout.cloud.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" href="./Data/site.ico" type="image/x-icon">
     <style>
@@ -757,21 +760,21 @@
 
             <div class="stats-grid">
                 <div class="stat-card">
-                    <h4 id="total-entries">3340</h4>
+                    <h4 id="total-entries">4100</h4>
                     <p class="stat-label">Entrées Totales</p>
                 </div>
                 <div class="stat-card">
-                    <h4 id="total-contributors">20</h4>
+                    <h4 id="total-contributors">21</h4>
                     <p class="stat-label">Contributeurs</p>
                 </div>
                 <div class="stat-card">
-                    <h4 id="completion-rate">5%</h4>
+                    <h4 id="completion-rate">9%</h4>
                     <p class="stat-label">Taux de Complétion</p>
                 </div>
             </div>
             <div class="big-stats-grid">
                 <div class="big-stat-card">
-                    <h3>Les 100 Noms de famille les plus fréquents</h3>
+                    <h3 id="word-cloud-title">Les 100 Noms de famille les plus fréquents</h3>
                     <div id="word-cloud"></div>
                 </div>
                 <div class="big-stat-card">
@@ -789,6 +792,84 @@
                 <div class="big-stat-card">
                     <h3>Répartition géographique des lieux de naissance</h3>
                     <div id="france-map"></div>
+                </div>
+            </div>
+
+            <!-- Bouton Plus de Stats -->
+            <div class="btn-container" style="margin-top: 48px; text-align: center;">
+                <button id="btn-more-stats" class="btn btn-primary" onclick="loadAdvancedStats()">
+                    📊 Plus de statistiques avancées
+                </button>
+            </div>
+
+            <!-- Section Stats Avancées (cachée par défaut) -->
+            <div id="advanced-stats" style="display: none;">
+                <div id="advanced-stats-status" class="filter-section" style="text-align: center; margin-top: 32px;">
+                    ⏳ Chargement des statistiques avancées...
+                </div>
+
+                <!-- SECTION 1: Chronologie & Épidémiologie -->
+                <div class="filter-section" style="margin-top: 32px;">
+                    <h3 style="text-align: center; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                        Chronologie & Épidémiologie
+                        <span>
+                            <label style="font-weight: normal; font-size: 0.9rem;">Filtrer par Cause : </label>
+                            <select id="causeSelect" onchange="updateHeatmap()" style="padding: 5px; border-radius: 4px;">
+                                <option value="All">Toutes les causes</option>
+                            </select>
+                        </span>
+                    </h3>
+                </div>
+                <div class="big-stats-grid">
+                    <div class="big-stat-card">
+                        <h3>Intensité des Décès par Mois/Année</h3>
+                        <div id="chart-heatmap-deaths" style="min-height: 400px;"></div>
+                    </div>
+                    <div class="big-stat-card">
+                        <h3>Saisonnalité & Crise 1814</h3>
+                        <div id="chart-saison" style="min-height: 400px;"></div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: Sociologie -->
+                <div class="filter-section" style="margin-top: 32px;">
+                    <h3 style="text-align: center;">Sociologie : Métiers & Espérance de vie</h3>
+                </div>
+                <div class="big-stats-grid">
+                    <div class="big-stat-card">
+                        <h3>Origine Provinciale des Métiers</h3>
+                        <div id="chart-heatmap-jobs" style="min-height: 800px;"></div>
+                    </div>
+                    <div class="big-stat-card">
+                        <h3>Distribution de l'âge au décès par métier</h3>
+                        <div id="chart-life-expectancy" style="min-height: 800px;"></div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2b: Causes de décès & Âge -->
+                <div class="filter-section" style="margin-top: 32px;">
+                    <h3 style="text-align: center;">Épidémiologie : Causes de décès selon l'âge</h3>
+                </div>
+                <div class="big-stats-grid">
+                    <div class="big-stat-card" style="grid-column: span 2;">
+                        <h3>🎻 Distribution de l'âge au décès par cause (Violin Plot)</h3>
+                        <div id="chart-cause-violin" style="min-height: 800px;"></div>
+                    </div>
+                </div>
+
+                <!-- SECTION 3: Onomastique -->
+                <div class="filter-section" style="margin-top: 32px;">
+                    <h3 style="text-align: center;">Onomastique (% de la population H/F)</h3>
+                </div>
+                <div class="big-stats-grid">
+                    <div class="big-stat-card">
+                        <h3>🤵 Prénoms Masculins les plus fréquents</h3>
+                        <div id="chart-names-men" style="min-height: 400px;"></div>
+                    </div>
+                    <div class="big-stat-card">
+                        <h3>👩 Prénoms Féminins les plus fréquents</h3>
+                        <div id="chart-names-women" style="min-height: 400px;"></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1150,10 +1231,16 @@
                 return acc;
             }, {});
 
+            const maxWords = 100;
             const words = Object.entries(nameCounts)
                 .map(([text, size]) => ({ text, size }))
                 .sort((a, b) => b.size - a.size)
-                .slice(0, 100); // Limiter aux 100 noms les plus fréquents
+                .slice(0, maxWords);
+
+            // Mettre à jour le titre avec le nombre réel de noms affichés
+            const actualCount = words.length;
+            document.getElementById('word-cloud-title').textContent = 
+                `Les ${actualCount} Noms de famille les plus fréquents`;
 
             var [width, height] = [document.getElementById('word-cloud').offsetWidth, 300];
             if (width === 0) width = document.getElementById('project-card').offsetWidth*0.8; // Valeur par défaut si le conteneur n'a pas de largeur définie
@@ -1863,6 +1950,658 @@
                     showPage(hash, targetLink);
                 }
             }
+        }
+
+        // =====================================================
+        // STATISTIQUES AVANCÉES (chargées à la demande)
+        // =====================================================
+        
+        let ADVANCED_DATA = []; // Stockage global pour les stats avancées
+        let advancedStatsLoaded = false;
+
+        // Taxonomies pour classification - basée sur l'analyse des 2000+ entrées du CSV
+        const jobTaxonomy = [
+            // Armée & Militaire (soldats, gardes, infanterie...)
+            { cat: 'Armée', keywords: [
+                'soldat', 'militaire', 'fusilier', 'fusillier', 'garde impérial', 'garde imperial',
+                'caporal', 'sergent', 'officier', 'dragon', 'hussard', 'canonnier', 'canonier',
+                'infanterie', 'voltigeur', 'tirailleur', 'prussien', 'grenadier', 'cavalier',
+                'artilleur', 'chasseur', 'cuirassier', 'lancier', 'tambour', 'trompette',
+                'ex-militaire', 'vétéran', 'veteran', 'sapeur', 'maréchal des logis'
+            ]},
+            // Bâtiment & Construction
+            { cat: 'Bâtiment', keywords: [
+                'maçon', 'macon', 'charpentier', 'menuisier', 'tailleur de pierre', 'couvreur',
+                'peintre en bâtiment', 'peintre en batiment', 'vitrier', 'scieur de long',
+                'terrassier', 'paveur', 'carrier', 'plâtrier', 'platrier', 'carreleur',
+                'couverturier', 'plombier', 'serrurier', 'charron', 'marbrier', 'sculpteur'
+            ]},
+            // Textile & Habillement (couturières, tailleurs, fileuses...)
+            { cat: 'Textile', keywords: [
+                'couturi', 'lingère', 'lingere', 'tisserand', 'tailleur', 'brodeuse', 'brodeur',
+                'chapelier', 'chapelière', 'dentellière', 'dentelliere', 'fille de mode', 'mode',
+                'fileuse', 'fileur', 'bonnetier', 'bonnetière', 'culottière', 'culottiere',
+                'gantière', 'gantiere', 'tricoteuse', 'tricoteur', 'dévideuse', 'devideuse',
+                'cotonnière', 'cotonniere', 'ouvrier en coton', 'ouvrière en coton',
+                'ouvrier en laine', 'ouvrière en laine', 'cardeur', 'cardeuse', 'frangière',
+                'frangiere', 'passementier', 'rubanier', 'teinturier', 'blanchisseu'
+            ]},
+            // Service domestique
+            { cat: 'Service', keywords: [
+                'domestique', 'servante', 'femme de chambre', 'cocher', 'valet', 'cuisinier',
+                'cuisinière', 'cuisiniere', 'portier', 'portière', 'portiere', 'concierge',
+                'frotteur', 'palfrenier', 'palefrenier', 'balayeur', 'femme de ménage',
+                'femme de menage', 'garçon de service', 'garcon de service', 'laquais'
+            ]},
+            // Journaliers & Manœuvres
+            { cat: 'Journalier', keywords: [
+                'journalier', 'journalière', 'journaliere', 'gagne-denier', 'gagne denier',
+                'manoeuvre', 'manouvrier', 'homme de peine', 'scieur de bois', 'portefaix',
+                'porteur d\'eau', 'porteuse d\'eau', 'porteur à la halle', 'porteuse à la halle',
+                'commissionnaire', 'porteur', 'charretier', 'voiturier', 'débardeur'
+            ]},
+            // Cuir & Chaussure
+            { cat: 'Cuir', keywords: [
+                'cordonnier', 'cordonnière', 'bottier', 'sellier', 'tanneur', 'corroyeur',
+                'bourrelier', 'bourelier', 'maroquinier', 'gaiînier', 'gainier', 'savetier'
+            ]},
+            // Métallurgie & Mécanique
+            { cat: 'Métallurgie', keywords: [
+                'serrurier', 'ferblantier', 'fondeur', 'chaudronnier', 'maréchal', 'marechal',
+                'forgeron', 'cloutier', 'taillandier', 'mécanicien', 'mecanicien', 'armurier',
+                'potier d\'étain', 'potier d\'etain', 'rémouleur', 'remouleur', 'coutelier',
+                'épinglier', 'ferronnier'
+            ]},
+            // Artisanat de luxe & Précision
+            { cat: 'Artisanat luxe', keywords: [
+                'bijoutier', 'horloger', 'orfèvre', 'orfevre', 'émailleur', 'emailleur',
+                'émailleuse', 'emailleuse', 'joaillier', 'lapidaire', 'graveur', 'ciseleur',
+                'doreur', 'argenteur', 'tabletier', 'tablettier', 'éventailliste', 'lunetier'
+            ]},
+            // Bois & Ameublement
+            { cat: 'Bois', keywords: [
+                'ébéniste', 'ebeniste', 'tourneur', 'tonnelier', 'vannier', 'layetier',
+                'charron', 'sabotier', 'brossier', 'boisselier'
+            ]},
+            // Imprimerie & Papier
+            { cat: 'Imprimerie', keywords: [
+                'imprimeur', 'relieur', 'écrivain', 'ecrivain', 'papetier', 'cartonnière',
+                'cartonniere', 'cartonnier', 'lithographe', 'typographe', 'graveur'
+            ]},
+            // Alimentation
+            { cat: 'Alimentation', keywords: [
+                'boucher', 'boulanger', 'boulangère', 'pâtissier', 'patissier', 'limonadier',
+                'traiteur', 'marchand de vin', 'charcutier', 'fruitière', 'fruitiere',
+                'épicier', 'epicier', 'confiseur', 'vinaigrier', 'brasseur', 'meunier',
+                'garçon de café', 'garcon de cafe'
+            ]},
+            // Commerce & Négoce
+            { cat: 'Commerce', keywords: [
+                'marchand', 'marchande', 'revendeu', 'brocanteur', 'brocanteuse', 'colporteur',
+                'camelot', 'chiffonnier', 'chiffonnière', 'chiffoniere', 'fripier', 'fripière',
+                'mercier', 'mercière', 'épicier', 'quincaillier'
+            ]},
+            // Agriculture & Travail de la terre
+            { cat: 'Agriculture', keywords: [
+                'cultivateur', 'vigneron', 'jardinier', 'jardinière', 'jardini', 'laboureur',
+                'berger', 'bergère', 'bergere', 'charretier', 'moissonneur', 'vendangeur',
+                'maraîcher', 'maraicher', 'batteur en grange'
+            ]},
+            // Transport & Navigation
+            { cat: 'Transport', keywords: [
+                'marinier', 'batelier', 'voiturier', 'cocher', 'postillon', 'charretier',
+                'ouvrier au canal', 'éclusier', 'débardeur', 'roulier'
+            ]},
+            // Arts & Spectacles
+            { cat: 'Arts', keywords: [
+                'musicien', 'peintre', 'sculpteur', 'acteur', 'actrice', 'comédien', 'comedien',
+                'danseur', 'danseuse', 'chanteur', 'chanteuse', 'artiste', 'décrotteur',
+                'graveur'
+            ]},
+            // Professions intellectuelles & Éducation
+            { cat: 'Intellectuel', keywords: [
+                'instituteur', 'institutrice', 'professeur', 'précepteur', 'clerc', 'notaire',
+                'avocat', 'médecin', 'chirurgien', 'pharmacien', 'apothicaire', 'employé',
+                'commis', 'comptable'
+            ]},
+            // Industries diverses (gaz, tabac...)
+            { cat: 'Industrie', keywords: [
+                'ouvrier au tabac', 'ouvrière au tabac', 'gazier', 'gazière', 'gaziere',
+                'matelassier', 'ouvrier', 'ouvrière en linge'
+            ]},
+            // Fleuristes & Décoration
+            { cat: 'Fleuriste', keywords: [
+                'fleuriste', 'bouquetière', 'bouquetiere'
+            ]},
+            // Sans profession / Enfants / Indigents
+            { cat: 'Sans état', keywords: [
+                'sans état', 'sans etat', 'néant', 'neant', 'indigent', 'n/c', 'aucune',
+                'enfant', 'élève', 'eleve', 'mendiant', 'mendiante', 'rentier', 'rentière',
+                'propriétaire', 'proprietaire'
+            ]}
+        ];
+
+        // Taxonomie des causes de décès - basée sur l'analyse des 2000+ entrées du CSV
+        const causeTaxonomy = [
+            // Phtisie / Tuberculose (la plus fréquente)
+            { cat: 'Phtisie/Tuberculose', keywords: [
+                'phtisie', 'phitisie', 'phtisique', 'poitrinaire', 'tuberculose', 'tubercule',
+                'chronique de poitrine', 'affection de poitrine'
+            ]},
+            // Fièvres (très fréquentes à l'époque)
+            { cat: 'Fièvres', keywords: [
+                'fièvre', 'fievre', 'typhus', 'typhoïde', 'typhoide', 'adynamique', 'ataxique',
+                'putride', 'bilieuse', 'gastrique', 'catarrhale', 'muqueuse', 'hectique',
+                'intermittente', 'continue', 'lente', 'inflammatoire', 'dynamique',
+                'ataxico-adynamique', 'lente nerveuse'
+            ]},
+            // Maladies respiratoires (hors phtisie)
+            { cat: 'Respiratoire', keywords: [
+                'pneumonie', 'péripneumonie', 'peripneumonie', 'catarrhe', 'catharre',
+                'pleurésie', 'pleuresie', 'fluxion de poitrine', 'flux de poitrine',
+                'hydrothorax', 'hydro-thorax', 'asthme', 'suffocant', 'bronchite',
+                'laryngée', 'laryngite', 'angine', 'croup', 'coqueluche'
+            ]},
+            // Maladies cardiovasculaires
+            { cat: 'Cardiovasculaire', keywords: [
+                'anévrisme', 'anevrisme', 'coeur', 'cœur', 'hypertrophie du coeur',
+                'affection organique du coeur', 'maladie du coeur', 'maladie organique du coeur',
+                'cardite', 'péricardite', 'endocardite', 'angine de poitrine'
+            ]},
+            // Maladies digestives
+            { cat: 'Digestif', keywords: [
+                'diarrhée', 'diarrhee', 'dévoiement', 'devoiement', 'dysenterie', 'dyssenterie',
+                'dissenterie', 'dissentrie', 'gastrite', 'gastro-entérite', 'gastro-enterite',
+                'entérite', 'enterite', 'péritonite', 'peritonite', 'colique', 'colite',
+                'ulcérations intestinales', 'embarras gastrique', 'estomac', 'abdomen',
+                'engorgement au foie', 'foie', 'hépatite', 'ictère', 'jaunisse'
+            ]},
+            // Hydropisie (œdème, rétention d'eau)
+            { cat: 'Hydropisie', keywords: [
+                'hydropisie', 'hydropysie', 'hydropique', 'anasarque', 'ascite',
+                'leucophlegmatie', 'leucophlegmasie', 'œdème', 'oedeme'
+            ]},
+            // Maladies neurologiques / Cerveau
+            { cat: 'Neurologique', keywords: [
+                'apoplexie', 'paralysie', 'hémiplégie', 'hemiplegie', 'ramollissement du cerveau',
+                'cerveau', 'méningite', 'meningite', 'convulsion', 'épilepsie', 'epilepsie',
+                'tétanos', 'tetanos', 'encéphalite', 'encephalite'
+            ]},
+            // Cachexie / Affaiblissement général
+            { cat: 'Cachexie/Marasme', keywords: [
+                'cachexie', 'cach', 'marasme', 'adynamie', 'asthénie', 'asthenie',
+                'affaiblissement', 'épuisement', 'epuisement', 'consomption', 'atrophie'
+            ]},
+            // Vieillesse / Sénilité
+            { cat: 'Vieillesse', keywords: [
+                'sénile', 'senile', 'sénilité', 'senilite', 'vieillesse', 'décrépitude',
+                'decrepitude', 'débilité', 'debilite', 'caducité'
+            ]},
+            // Cancers / Tumeurs
+            { cat: 'Cancer', keywords: [
+                'cancer', 'tumeur', 'squirre', 'ulcère à la matrice', 'ulcere a la matrice',
+                'ulcère à l\'uterus', 'cancer de l\'estomac', 'cancer de l\'utérus',
+                'cancer uterine', 'carcinome'
+            ]},
+            // Maladies infectieuses / Épidémiques
+            { cat: 'Infectieux', keywords: [
+                'choléra', 'cholera', 'variole', 'petite vérole', 'rougeole', 'scarlatine',
+                'syphilis', 'vénérien', 'venerien', 'érysipèle', 'erysipele', 'gangrène',
+                'gangrene', 'scorbut', 'fièvre jaune', 'peste', 'diphtérie', 'diphterie'
+            ]},
+            // Maladies génito-urinaires
+            { cat: 'Génito-urinaire', keywords: [
+                'aménorrhée', 'amenorrhee', 'matrice', 'utérus', 'uterus', 'métrite', 'metrite',
+                'néphrite', 'nephrite', 'calcul', 'rétention d\'urine', 'hydropisie de poitrine',
+                'couches', 'accouchement', 'fièvre puerpérale'
+            ]},
+            // Rhumatismes / Maladies articulaires
+            { cat: 'Rhumatismal', keywords: [
+                'rhumatisme', 'rhumatismale', 'goutte', 'arthrite', 'articulation'
+            ]},
+            // Mort subite / Arrivé mourant
+            { cat: 'Mort subite/Arrivée', keywords: [
+                'arrivé mourant', 'arrive mourant', 'arriv', 'mort en entrant', 'mort en arrivant',
+                'morte en arrivant', 'agonisant', 'agonisante', 'mort subite', 'foudroyant'
+            ]},
+            // Accidents / Traumatismes
+            { cat: 'Accidents', keywords: [
+                'chute', 'brûlure', 'brulure', 'fracture', 'plaie', 'blessure', 'contusion',
+                'noyade', 'asphyxie', 'strangulation', 'suicide', 'empoisonnement', 'écrasement'
+            ]},
+            // Non précisé / Inconnu
+            { cat: 'Non précisé', keywords: [
+                'n/c', 'non précisé', 'non precise', '???', 'inconnu', 'indéterminé'
+            ]}
+        ];
+
+        function categorizeAdvanced(str, taxonomy, defaultVal = 'Autres') {
+            if (!str || str.length < 3) return defaultVal;
+            let s = str.toLowerCase();
+            for (let t of taxonomy) {
+                if (t.keywords.some(k => s.includes(k))) return t.cat;
+            }
+            return defaultVal;
+        }
+
+        function cleanPrenoms(str) {
+            if (!str || typeof str !== 'string') return [null, null, null];
+            let parts = str.trim().split(/[\s-]+/);
+            let cleanParts = parts.filter(p => p.length > 2 && !['veuve', 'épouse', 'fils', 'fille', 'femme', 'epoux', 'sieur'].includes(p.toLowerCase()));
+            return [cleanParts[0] || null, cleanParts[1] || null, cleanParts[2] || null];
+        }
+
+        function extractDepartmentAdvanced(val) {
+            if (!val) return 'Inconnu';
+            let match = val.match(/\((.*?)\)/);
+            return (match && match[1]) ? match[1].trim() : 'Inconnu';
+        }
+
+        function calculateSmartMax(matrix) {
+            let values = _.flattenDeep(matrix).filter(v => v > 0).sort((a,b) => a-b);
+            if (values.length === 0) return 10;
+            return values[Math.floor(values.length * 0.95)];
+        }
+
+        function getValueAdvanced(row, keys) {
+            for (let k of keys) { if (row[k] !== undefined) return row[k]; }
+            return null;
+        }
+
+        // Fonction principale pour charger les stats avancées
+        function loadAdvancedStats() {
+            if (advancedStatsLoaded) {
+                // Si déjà chargé, on scroll vers la section
+                document.getElementById('advanced-stats').scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
+            // Afficher la section et le statut de chargement
+            document.getElementById('advanced-stats').style.display = 'block';
+            document.getElementById('btn-more-stats').textContent = '⏳ Chargement en cours...';
+            document.getElementById('btn-more-stats').disabled = true;
+
+            // Utiliser les données déjà chargées (dbData)
+            if (dbData.length > 0) {
+                processAdvancedData(dbData);
+            } else {
+                // Si les données ne sont pas encore chargées, attendre
+                document.getElementById('advanced-stats-status').innerHTML = '⏳ Attente du chargement des données...';
+                setTimeout(loadAdvancedStats, 1000);
+            }
+        }
+
+        function processAdvancedData(rawData) {
+            // Processing des données pour les stats avancées
+            ADVANCED_DATA = rawData.map(d => {
+                let dateStr = getValueAdvanced(d, ['Date de décès', 'Date']);
+                let parts = dateStr ? dateStr.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/) : null;
+                let date = parts ? new Date(parts[3], parts[2]-1, parts[1]) : null;
+
+                let ageStr = getValueAdvanced(d, ['Âge', 'Age', 'age']);
+                let age = null;
+                if(ageStr) {
+                    let s = ageStr.toString().toLowerCase().replace(',','.');
+                    let val = parseFloat(s.match(/[\d\.]+/));
+                    if(!isNaN(val)) {
+                        if(s.includes('mois')) age = val/12;
+                        else if(s.includes('jour')) age = 0;
+                        else age = val;
+                    }
+                }
+
+                let sexeStr = getValueAdvanced(d, ['Sexe']);
+                let sexe = (sexeStr && sexeStr.toLowerCase().startsWith('f')) ? 'F' : 'M';
+
+                let causeStr = getValueAdvanced(d, ['Cause de mort: espèce', 'Cause', 'Maladie', 'Observations', 'Genre de mort']);
+                
+                return {
+                    date: date,
+                    year: date ? date.getFullYear() : null,
+                    month: date ? date.getMonth() : null,
+                    age: age,
+                    sexe: sexe,
+                    job_cat: categorizeAdvanced(getValueAdvanced(d, ['Profession', 'Metier']), jobTaxonomy, 'Autres'),
+                    cause_cat: categorizeAdvanced(causeStr, causeTaxonomy, 'Autres'),
+                    cause_raw: causeStr,
+                    departement: extractDepartmentAdvanced(getValueAdvanced(d, ['Lieu de naissance', 'Commune de naissance'])),
+                    p_defunt: cleanPrenoms(getValueAdvanced(d, ['Prénoms', 'Prenoms', 'Prénom'])),
+                    p_conjoint: cleanPrenoms(getValueAdvanced(d, ['Prénoms Conjoint', 'Prenoms Conjoint']))
+                };
+            }).filter(d => d.date != null && d.year >= 1809 && d.year <= 1860);
+
+            // Mise à jour du statut
+            document.getElementById('advanced-stats-status').innerHTML = '✅ Statistiques avancées chargées (' + ADVANCED_DATA.length + ' entrées analysées)';
+            document.getElementById('advanced-stats-status').style.background = '#d4edda';
+            document.getElementById('advanced-stats-status').style.color = '#155724';
+
+            // Mettre à jour le bouton
+            document.getElementById('btn-more-stats').textContent = '📊 Statistiques avancées affichées';
+            document.getElementById('btn-more-stats').disabled = false;
+
+            // Générer tous les graphiques
+            populateCauseDropdown();
+            updateHeatmap();
+            renderSeasonality();
+            renderRegionJobs();
+            renderLifeExpectancy();
+            renderCauseViolinPlot();
+            renderNamesPercent();
+
+            advancedStatsLoaded = true;
+
+            // Scroll vers la section
+            document.getElementById('advanced-stats').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        // Dropdown des causes
+        function populateCauseDropdown() {
+            let counts = _.countBy(ADVANCED_DATA, 'cause_cat');
+            let sel = document.getElementById('causeSelect');
+            sel.innerHTML = '<option value="All">Toutes les causes</option>';
+            Object.entries(counts).sort((a,b) => b[1]-a[1]).forEach(([cause, count]) => {
+                let opt = document.createElement('option');
+                opt.value = cause;
+                opt.text = `${cause} (${count})`;
+                sel.add(opt);
+            });
+        }
+
+        // Heatmap dynamique des décès
+        window.updateHeatmap = function() {
+            if (ADVANCED_DATA.length === 0) return;
+            
+            let selectedCause = document.getElementById('causeSelect').value;
+            let filteredAdvData = (selectedCause === 'All') 
+                ? ADVANCED_DATA 
+                : ADVANCED_DATA.filter(d => d.cause_cat === selectedCause);
+
+            let years = _.uniq(ADVANCED_DATA.map(d => d.year)).sort();
+            let monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+            let z = Array(12).fill(0).map(() => Array(years.length).fill(0));
+
+            filteredAdvData.forEach(d => {
+                let yIdx = years.indexOf(d.year);
+                if (yIdx > -1 && d.month !== null) z[d.month][yIdx]++;
+            });
+
+            let smartMax = calculateSmartMax(z);
+
+            Plotly.react('chart-heatmap-deaths', [{
+                x: years, y: monthNames, z: z, type: 'heatmap',
+                colorscale: 'Reds', zmin: 0, zmax: smartMax,
+                colorbar: {title: 'Décès'}
+            }], { 
+                title: `Intensité des Décès : ${selectedCause}`,
+                margin: {t: 50, l: 60},
+                xaxis: {
+                    type: 'category',
+                    tickmode: 'array',
+                    tickvals: years,
+                    ticktext: years.map(String)
+                }
+            });
+        };
+
+        // Saisonnalité
+        function renderSeasonality() {
+            let years = _.uniq(ADVANCED_DATA.map(d => d.year)).sort();
+            let monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+            let stats = [];
+
+            // Trouver l'année avec le plus de décès pour comparaison
+            let yearCounts = _.countBy(ADVANCED_DATA, 'year');
+            let peakYear = Object.entries(yearCounts).sort((a,b) => b[1]-a[1])[0];
+            let peakYearNum = peakYear ? parseInt(peakYear[0]) : years[0];
+
+            for(let m=0; m<12; m++) {
+                let counts = years.filter(y => y !== peakYearNum).map(y => ADVANCED_DATA.filter(d => d.year===y && d.month===m).length);
+                let countPeak = ADVANCED_DATA.filter(d => d.year===peakYearNum && d.month===m).length;
+                if (counts.length > 0) {
+                    stats.push({ month: monthNames[m], mean: math.mean(counts), std: math.std(counts), valPeak: countPeak });
+                }
+            }
+
+            if (stats.length === 0) return;
+
+            Plotly.newPlot('chart-saison', [
+                { x: stats.map(s => s.month), y: stats.map(s => s.mean), type: 'scatter', mode: 'lines', name: `Moyenne (Hors ${peakYearNum})`, line: {color: '#2980b9', width: 4} },
+                { x: stats.map(s => s.month), y: stats.map(s => s.mean + s.std), type: 'scatter', mode: 'lines', showlegend: false, line: {width: 0} },
+                { x: stats.map(s => s.month), y: stats.map(s => s.mean - s.std), type: 'scatter', mode: 'lines', name: 'Zone Normale (±1σ)', fill: 'tonexty', fillcolor: 'rgba(41, 128, 185, 0.2)', line: {width: 0} },
+                { x: stats.map(s => s.month), y: stats.map(s => s.valPeak), type: 'scatter', mode: 'markers+lines', name: `Année ${peakYearNum}`, line: {color: '#c0392b', dash: 'dot'} }
+            ], { title: `Saisonnalité & Comparaison avec ${peakYearNum}`, margin: {t: 50} });
+        }
+
+        // Heatmap Métiers vs Régions
+        function renderRegionJobs() {
+            let topDepts = Object.entries(_.countBy(ADVANCED_DATA, 'departement'))
+                .filter(x => x[0] !== 'Inconnu' && x[0] !== '75' && x[0] !== 'Seine')
+                .sort((a,b) => b[1]-a[1]).slice(0, 15).map(x => x[0]);
+            
+            // Trier les catégories de métiers par occurrence totale
+            let jobCounts = _.countBy(ADVANCED_DATA.filter(d => d.job_cat && d.job_cat !== 'Sans état'), 'job_cat');
+            let taxos = Object.entries(jobCounts)
+                .sort((a, b) => b[1] - a[1])
+                .map(x => x[0]);
+            
+            let z = taxos.map(() => Array(topDepts.length).fill(0));
+
+            ADVANCED_DATA.forEach(d => {
+                let xIdx = topDepts.indexOf(d.departement);
+                let yIdx = taxos.indexOf(d.job_cat);
+                if (xIdx > -1 && yIdx > -1) z[yIdx][xIdx]++;
+            });
+
+            // Inverser pour afficher le plus fréquent en haut
+            let taxosReversed = [...taxos].reverse();
+            let zReversed = [...z].reverse();
+
+            Plotly.newPlot('chart-heatmap-jobs', [{
+                x: topDepts, y: taxosReversed, z: zReversed, type: 'heatmap',
+                colorscale: 'Viridis', zmin: 0, zmax: calculateSmartMax(z)
+            }], { title: 'Origine Provinciale des Métiers', margin: {l: 120, t: 50} });
+        }
+
+        // Espérance de vie par métier
+        function renderLifeExpectancy() {
+            // Palette de couleurs partagée
+            const colors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c',
+                '#e67e22', '#34495e', '#16a085', '#c0392b', '#2980b9', '#27ae60',
+                '#8e44ad', '#d35400', '#1abc9c', '#7f8c8d', '#2c3e50', '#f1c40f'
+            ];
+
+            // Grouper les données par catégorie de métier
+            let jobsData = {};
+            
+            ADVANCED_DATA.forEach(d => {
+                if (d.age !== null && d.age > 10 && d.job_cat && d.job_cat !== 'Sans état') {
+                    if (!jobsData[d.job_cat]) {
+                        jobsData[d.job_cat] = [];
+                    }
+                    jobsData[d.job_cat].push(d.age);
+                }
+            });
+
+            // Trier par nombre de cas
+            let sortedJobs = Object.entries(jobsData)
+                .filter(([job, ages]) => ages.length >= 5)
+                .sort((a, b) => b[1].length - a[1].length)
+                .slice(0, 15);
+
+            if (sortedJobs.length === 0) return;
+
+            // Ordre des catégories (du plus fréquent au moins fréquent, inversé pour affichage)
+            let categoryOrder = sortedJobs.map(([job, ages]) => job).reverse();
+
+            // Créer les traces pour le violin plot horizontal
+            let traces = sortedJobs.map(([job, ages], index) => {
+                return {
+                    type: 'violin',
+                    x: ages,
+                    y: Array(ages.length).fill(job),
+                    name: `${job} (n=${ages.length})`,
+                    orientation: 'h',
+                    side: 'positive',
+                    box: { visible: true },
+                    meanline: { visible: true },
+                    line: { color: colors[index % colors.length] },
+                    fillcolor: colors[index % colors.length],
+                    opacity: 0.7,
+                    points: false,
+                    scalemode: 'width',
+                    width: 0.8,
+                    hovertemplate: `<b>${job}</b><br>` +
+                        `Effectif: ${ages.length} personnes<br>` +
+                        `Âge moyen: ${(ages.reduce((a,b) => a+b, 0) / ages.length).toFixed(1)} ans<br>` +
+                        `<extra></extra>`
+                };
+            });
+
+            Plotly.newPlot('chart-life-expectancy', traces, {
+                title: 'Distribution de l\'âge au décès par métier (>10 ans)',
+                xaxis: {
+                    title: 'Âge (années)',
+                    zeroline: false,
+                    range: [10, 100]
+                },
+                yaxis: {
+                    title: '',
+                    categoryorder: 'array',
+                    categoryarray: categoryOrder
+                },
+                showlegend: false,
+                margin: { l: 120, t: 50, r: 20, b: 50 }
+            });
+        }
+
+        // Violin plot des causes de décès par âge (horizontal)
+        function renderCauseViolinPlot() {
+            // Palette de couleurs partagée
+            const colors = [
+                '#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c',
+                '#e67e22', '#34495e', '#16a085', '#c0392b', '#2980b9', '#27ae60'
+            ];
+
+            // Grouper les données par cause
+            let causesData = {};
+            
+            ADVANCED_DATA.forEach(d => {
+                if (d.age !== null && d.age >= 0 && d.cause_cat && d.cause_cat !== 'Non précisé') {
+                    if (!causesData[d.cause_cat]) {
+                        causesData[d.cause_cat] = [];
+                    }
+                    causesData[d.cause_cat].push(d.age);
+                }
+            });
+
+            // Trier par nombre de cas et prendre les top 12 causes
+            let sortedCauses = Object.entries(causesData)
+                .filter(([cause, ages]) => ages.length >= 10) // Au moins 10 cas
+                .sort((a, b) => b[1].length - a[1].length)
+                .slice(0, 12);
+
+            if (sortedCauses.length === 0) return;
+
+            // Ordre des catégories (du plus fréquent au moins fréquent, inversé pour affichage)
+            let categoryOrder = sortedCauses.map(([cause, ages]) => cause).reverse();
+
+            // Créer les traces pour le violin plot HORIZONTAL
+            let traces = sortedCauses.map(([cause, ages], index) => {
+                return {
+                    type: 'violin',
+                    x: ages,
+                    y: Array(ages.length).fill(cause),
+                    name: `${cause} (n=${ages.length})`,
+                    orientation: 'h',
+                    side: 'positive',
+                    box: { visible: true },
+                    meanline: { visible: true },
+                    line: { color: colors[index % colors.length] },
+                    fillcolor: colors[index % colors.length],
+                    opacity: 0.7,
+                    points: false,
+                    scalemode: 'width',
+                    width: 0.8,
+                    hovertemplate: `<b>${cause}</b><br>` +
+                        `Effectif: ${ages.length} personnes<br>` +
+                        `Âge moyen: ${(ages.reduce((a,b) => a+b, 0) / ages.length).toFixed(1)} ans<br>` +
+                        `<extra></extra>`
+                };
+            });
+
+            Plotly.newPlot('chart-cause-violin', traces, {
+                title: 'Distribution de l\'âge au décès selon la cause',
+                xaxis: {
+                    title: 'Âge au décès (années)',
+                    zeroline: false,
+                    range: [0, 100]
+                },
+                yaxis: {
+                    title: '',
+                    categoryorder: 'array',
+                    categoryarray: categoryOrder
+                },
+                showlegend: false,
+                margin: { t: 50, b: 50, l: 150, r: 20 }
+            });
+        }
+
+        // Prénoms en pourcentage
+        function renderNamesPercent() {
+            let namesM = [[], [], []];
+            let namesF = [[], [], []];
+            
+            let totalMen = 0;
+            let totalWomen = 0;
+
+            ADVANCED_DATA.forEach(d => {
+                if (d.sexe === 'M') {
+                    totalMen++;
+                    [0,1,2].forEach(i => { if(d.p_defunt[i]) namesM[i].push(d.p_defunt[i]); });
+                    [0,1,2].forEach(i => { if(d.p_conjoint[i]) namesF[i].push(d.p_conjoint[i]); });
+                } else {
+                    totalWomen++;
+                    [0,1,2].forEach(i => { if(d.p_defunt[i]) namesF[i].push(d.p_defunt[i]); });
+                    [0,1,2].forEach(i => { if(d.p_conjoint[i]) namesM[i].push(d.p_conjoint[i]); });
+                }
+            });
+
+            if(totalMen === 0) totalMen = 1;
+            if(totalWomen === 0) totalWomen = 1;
+
+            function buildNameChart(divId, nameArray, title, totalPop, colorBase) {
+                let counts1 = _.countBy(nameArray[0]);
+                let topNames = Object.entries(counts1)
+                    .sort((a,b) => b[1]-a[1]).slice(0, 10).map(x => x[0]);
+                
+                if (topNames.length === 0) return;
+
+                let traces = [];
+                [0, 1, 2].forEach((rank, i) => {
+                    let counts = _.countBy(nameArray[rank]);
+                    let percentages = topNames.map(n => ((counts[n] || 0) / totalPop) * 100);
+                    
+                    traces.push({
+                        x: topNames,
+                        y: percentages,
+                        type: 'bar',
+                        name: `${i+1}${i===0?'er':'ème'} Prénom`,
+                        marker: { opacity: 1 - (i*0.3), color: colorBase }
+                    });
+                });
+
+                Plotly.newPlot(divId, traces, { 
+                    title: title + ` (Base: ${totalPop})`, 
+                    barmode: 'group',
+                    yaxis: {title: '% de la population', ticksuffix: '%'},
+                    legend: {orientation: 'h', y: 1.15},
+                    margin: {t: 80}
+                });
+            }
+
+            buildNameChart('chart-names-men', namesM, 'Prénoms Masculins', totalMen, '#2980b9');
+            buildNameChart('chart-names-women', namesF, 'Prénoms Féminins', totalWomen, '#c0392b');
         }
     </script>
 </body>
