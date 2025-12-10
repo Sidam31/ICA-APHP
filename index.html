@@ -2570,7 +2570,7 @@
             if(totalMen === 0) totalMen = 1;
             if(totalWomen === 0) totalWomen = 1;
 
-            function buildNameChart(divId, nameArray, title, totalPop, colorBase) {
+            function buildNameChart(divId, nameArray, title, totalPop, colorShades) {
                 let counts1 = _.countBy(nameArray[0]);
                 let topNames = Object.entries(counts1)
                     .sort((a,b) => b[1]-a[1]).slice(0, 10).map(x => x[0]);
@@ -2587,7 +2587,7 @@
                         y: percentages,
                         type: 'bar',
                         name: `${i+1}${i===0?'er':'ème'} Prénom`,
-                        marker: { opacity: 1 - (i*0.3), color: colorBase }
+                        marker: { color: colorShades[i] }
                     });
                 });
 
@@ -2600,8 +2600,13 @@
                 });
             }
 
-            buildNameChart('chart-names-men', namesM, 'Prénoms Masculins', totalMen, '#2980b9');
-            buildNameChart('chart-names-women', namesF, 'Prénoms Féminins', totalWomen, '#c0392b');
+            // Nuances de bleu pour les hommes (du plus foncé au plus clair)
+            const blueShades = ['#1a5276', '#2980b9', '#5dade2'];
+            // Nuances de rouge pour les femmes (du plus foncé au plus clair)
+            const redShades = ['#922b21', '#c0392b', '#e74c3c'];
+
+            buildNameChart('chart-names-men', namesM, 'Prénoms Masculins', totalMen, blueShades);
+            buildNameChart('chart-names-women', namesF, 'Prénoms Féminins', totalWomen, redShades);
         }
     </script>
 </body>
