@@ -6,7 +6,7 @@ on:
   # This schedule runs the workflow at 05:00 UTC every day.
   # You can customize the cron schedule.
   schedule:
-    - cron: '0 5 * * *'
+    - cron: 0 5 * * 1
   
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
