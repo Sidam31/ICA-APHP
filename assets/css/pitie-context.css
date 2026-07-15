@@ -1,0 +1,323 @@
+/*
+ * Pitié "Contexte" timeline page styles.
+ * Scoped under .pitie-context. Requires assets/css/theme.css to be linked
+ * first (design tokens) — this file no longer redeclares --pitie-* tokens,
+ * closing the DA drift that previously existed between this page and the
+ * main app (this page also used to fall back to a non-Inter font because
+ * it never loaded the Google Fonts link; context.html now does).
+ * Keyframe names are prefixed pitieContext* to avoid colliding with a host
+ * page's own @keyframes of the same generic name (fadeInUp, bounce, ...).
+ */
+.pitie-context,
+.pitie-context * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.pitie-context {
+    font-family: var(--pitie-font-family);
+    background: #ffffff;
+    color: #1a1a1a;
+    overflow-x: hidden;
+}
+
+.pitie-context .hero {
+    height: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: linear-gradient(135deg, var(--pitie-blue) 0%, #1e3a8a 50%, var(--pitie-blue-dark) 100%);
+    background-size: 200% 200%;
+    animation: pitieContextGradientShift 10s ease infinite;
+}
+
+@keyframes pitieContextGradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+}
+
+.pitie-context .hero-content {
+    text-align: center;
+    z-index: 2;
+    animation: pitieContextFadeInUp 1.5s ease-out;
+}
+
+.pitie-context .hero h1 {
+    font-size: 4.5rem;
+    margin-bottom: 1rem;
+    color: #ffffff;
+    text-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    letter-spacing: 2px;
+}
+
+.pitie-context .hero-subtitle {
+    font-size: 1.5rem;
+    color: #e0e7ff;
+    font-style: italic;
+    margin-bottom: 2rem;
+}
+
+.pitie-context .hero-description {
+    max-width: 700px;
+    margin: 0 auto;
+    font-size: 1.1rem;
+    line-height: 1.8;
+    color: #e0e7ff;
+}
+
+.pitie-context .timeline-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 5rem 2rem;
+    background: #ffffff;
+}
+
+.pitie-context .section-title {
+    font-size: 2.8rem;
+    text-align: center;
+    margin-bottom: 4rem;
+    color: var(--pitie-blue);
+    position: relative;
+    font-weight: bold;
+}
+
+.pitie-context .section-title::after {
+    content: '';
+    display: block;
+    width: 120px;
+    height: 4px;
+    background: linear-gradient(90deg, transparent, var(--pitie-blue), transparent);
+    margin: 1.5rem auto;
+}
+
+.pitie-context .timeline {
+    position: relative;
+    padding: 2rem 0;
+}
+
+.pitie-context .timeline::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(180deg, var(--pitie-blue), var(--pitie-blue-dark));
+}
+
+.pitie-context .timeline-item {
+    display: flex;
+    margin-bottom: 5rem;
+    position: relative;
+    opacity: 0;
+    animation: pitieContextFadeInItem 0.8s ease-out forwards;
+}
+
+.pitie-context .timeline-item:nth-child(even) {
+    flex-direction: row-reverse;
+}
+
+.pitie-context .timeline-content {
+    width: 45%;
+    padding: 2.5rem;
+    background: #ffffff;
+    border-radius: var(--pitie-radius-lg);
+    border: 2px solid var(--pitie-blue);
+    box-shadow: 0 5px 20px rgba(30, 64, 175, 0.15);
+    transition: all 0.4s ease;
+    cursor: pointer;
+}
+
+.pitie-context .timeline-content:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 15px 40px rgba(30, 64, 175, 0.25);
+    border-color: var(--pitie-blue-dark);
+}
+
+.pitie-context .timeline-year {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--pitie-blue);
+    color: #ffffff;
+    padding: 0.8rem 2rem;
+    border-radius: var(--pitie-radius-pill);
+    font-weight: bold;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 15px rgba(30, 64, 175, 0.4);
+    z-index: 10;
+}
+
+.pitie-context .timeline-content h3 {
+    color: var(--pitie-blue);
+    margin-bottom: 1rem;
+    font-size: 1.9rem;
+    font-weight: bold;
+}
+
+.pitie-context .timeline-content p {
+    line-height: 1.9;
+    color: #374151;
+    margin-bottom: 1rem;
+}
+
+.pitie-context .population-tag {
+    display: inline-block;
+    background: #dbeafe;
+    color: var(--pitie-blue);
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    margin-top: 1rem;
+}
+
+.pitie-context .source-link {
+    display: inline-block;
+    margin-top: 1rem;
+    color: var(--pitie-blue);
+    text-decoration: none;
+    font-weight: bold;
+    transition: all 0.3s ease;
+    border-bottom: 2px solid transparent;
+}
+
+.pitie-context .source-link:hover {
+    color: var(--pitie-blue-dark);
+    border-bottom: 2px solid var(--pitie-blue-dark);
+}
+
+.pitie-context .source-link::before {
+    content: '📚 ';
+}
+
+.pitie-context .context-section {
+    max-width: 1200px;
+    margin: 5rem auto;
+    padding: 4rem 2rem;
+    background: linear-gradient(135deg, #f0f7ff 0%, #e0e7ff 100%);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(30, 64, 175, 0.1);
+}
+
+.pitie-context .context-section h2 {
+    color: var(--pitie-blue);
+    font-size: 2.5rem;
+    margin-bottom: 2rem;
+    text-align: center;
+    font-weight: bold;
+}
+
+.pitie-context .context-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 3rem;
+    margin-top: 3rem;
+}
+
+.pitie-context .context-card {
+    background: #ffffff;
+    padding: 2.5rem;
+    border-radius: var(--pitie-radius-lg);
+    border-left: 5px solid var(--pitie-blue);
+    box-shadow: 0 5px 15px rgba(30, 64, 175, 0.1);
+    transition: all 0.3s ease;
+}
+
+.pitie-context .context-card:hover {
+    transform: translateX(10px);
+    box-shadow: 0 8px 25px rgba(30, 64, 175, 0.2);
+}
+
+.pitie-context .context-card h3 {
+    color: var(--pitie-blue);
+    font-size: 1.8rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pitie-context .context-card p {
+    line-height: 1.9;
+    color: #374151;
+    margin-bottom: 1rem;
+    text-align: justify;
+}
+
+.pitie-context .icon {
+    font-size: 1.5rem;
+}
+
+.pitie-context .scroll-indicator {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    animation: pitieContextBounce 2s infinite;
+}
+
+.pitie-context .scroll-indicator::before {
+    content: '↓';
+    font-size: 2.5rem;
+    color: #ffffff;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+}
+
+@keyframes pitieContextBounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateX(-50%) translateY(0);
+    }
+    40% {
+        transform: translateX(-50%) translateY(-15px);
+    }
+    60% {
+        transform: translateX(-50%) translateY(-8px);
+    }
+}
+
+@keyframes pitieContextFadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pitieContextFadeInItem {
+    from {
+        opacity: 0;
+        transform: translateX(-40px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .pitie-context .hero h1 {
+        font-size: 2.5rem;
+    }
+    .pitie-context .timeline::before {
+        left: 30px;
+    }
+    .pitie-context .timeline-content {
+        width: calc(100% - 80px);
+        margin-left: 80px;
+    }
+    .pitie-context .timeline-item:nth-child(even) .timeline-content {
+        margin-left: 80px;
+    }
+    .pitie-context .timeline-year {
+        left: 30px;
+    }
+    .pitie-context .context-grid {
+        grid-template-columns: 1fr;
+    }
+}
