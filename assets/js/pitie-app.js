@@ -52,7 +52,7 @@
     let exactStreetLookup = null; // Map<normalized name/variant, street>
     let domicileMatchByRow = null; // WeakMap<row, matchResult> — built once, reused across filter changes
     let domicileChartInstance = null;
-    let domicileMapTooltip = null;
+    let parisMapInstance = null; // MapLibre GL instance, created once and reused across filter changes
 
     // ---- DA / theme -------------------------------------------------------
     // Reads the design tokens declared in assets/css/theme.css so chart
@@ -825,12 +825,18 @@
             arrCounts[street.arr] = (arrCounts[street.arr] || 0) + 1;
 
             // geoSource:'quartier' is a quartier-centroid fallback (one of only
-            // 48 possible points), not the street's real location — plotting it
-            // would stack every ungeocoded street in a quartier on one dot, so
-            // it's excluded here even though it's fine for the arr count above.
-            if (street.lat && street.lon && street.geoSource !== 'quartier') {
+            // 48 possible points, not the street's real location) — kept but
+            // styled distinctly on the map rather than hidden, same convention
+            // as rues-paris.html.
+            if (street.lat && street.lon) {
                 if (!streetPoints.has(street.name)) {
-                    streetPoints.set(street.name, { lat: street.lat, lon: street.lon, count: 0, name: street.name });
+                    streetPoints.set(street.name, {
+                        lat: street.lat,
+                        lon: street.lon,
+                        count: 0,
+                        name: street.name,
+                        geoSource: street.geoSource || null
+                    });
                 }
                 streetPoints.get(street.name).count++;
             }
@@ -885,72 +891,101 @@
         });
     }
 
-    // Only ~47% of the 2524 Lazare/Perrot streets carry lat/lon (Wikidata or
-    // OSM geocoding) — this scatter plots that geocoded subset; the
-    // arrondissement chart above is the one with full coverage.
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    // Real OSM-tiled map (MapLibre GL), same approach as rues-paris.html in
+    // the companion genealogy tool — a plain D3 scatter on a blank background
+    // gave no sense of *where* in Paris these points actually are. The map is
+    // created once and its data source updated on filter changes rather than
+    // torn down and rebuilt (rebuilding re-downloads every tile).
     function drawParisStreetMap(points) {
         const container = document.getElementById('domicile-map');
-        container.innerHTML = '';
-        domicileMapTooltip = null; // container was cleared, any previously appended tooltip node is gone with it
 
         if (points.length === 0) {
-            container.innerHTML = '<p>Aucune rue géolocalisée pour cette sélection.</p>';
+            if (parisMapInstance) {
+                const src = parisMapInstance.getSource('domiciles');
+                if (src) src.setData({ type: 'FeatureCollection', features: [] });
+            } else {
+                container.innerHTML = '<p>Aucune rue géolocalisée pour cette sélection.</p>';
+            }
             return;
         }
 
-        const width = Math.min(container.offsetWidth || 600, 600);
-        const height = 500;
-
-        const svg = d3.select('#domicile-map')
-            .append('svg')
-            .attr('width', width)
-            .attr('height', height);
-
-        const geoPoints = {
+        const geojsonData = {
             type: 'FeatureCollection',
-            features: points.map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] } }))
+            features: points.map((p) => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+                properties: { name: p.name, count: p.count, geoSource: p.geoSource }
+            }))
         };
-        const projection = d3.geoMercator().fitExtent([[24, 24], [width - 24, height - 24]], geoPoints);
-
         const maxCount = Math.max(...points.map((p) => p.count));
-        const radiusScale = d3.scaleSqrt().domain([0, maxCount]).range([2, 16]);
 
-        if (!domicileMapTooltip) {
-            domicileMapTooltip = document.querySelector('.pitie-app').appendChild(document.createElement('div'));
+        if (parisMapInstance) {
+            const src = parisMapInstance.getSource('domiciles');
+            if (src) {
+                src.setData(geojsonData);
+                parisMapInstance.setPaintProperty('domiciles-point', 'circle-radius', [
+                    'interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18
+                ]);
+                return;
+            }
         }
-        const tooltip = d3.select(domicileMapTooltip)
-            .style('position', 'absolute')
-            .style('background', 'white')
-            .style('padding', '8px')
-            .style('border', '1px solid #ccc')
-            .style('border-radius', '4px')
-            .style('pointer-events', 'none')
-            .style('opacity', 0)
-            .style('font-size', '12px')
-            .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
 
-        svg.selectAll('circle')
-            .data(points)
-            .enter()
-            .append('circle')
-            .attr('cx', (d) => projection([d.lon, d.lat])[0])
-            .attr('cy', (d) => projection([d.lon, d.lat])[1])
-            .attr('r', (d) => radiusScale(d.count))
-            .attr('fill', PALETTE.brand)
-            .attr('fill-opacity', 0.6)
-            .attr('stroke', PALETTE.mapStroke)
-            .attr('stroke-width', 0.5)
-            .on('mouseover', function (event, d) {
-                d3.select(this).attr('fill-opacity', 0.9);
-                tooltip.transition().duration(200).style('opacity', 1);
-                tooltip.html(`<strong>${d.name}</strong><br/>Domiciles: ${d.count}`)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-            })
-            .on('mouseout', function () {
-                d3.select(this).attr('fill-opacity', 0.6);
-                tooltip.transition().duration(200).style('opacity', 0);
+        container.innerHTML = '';
+        parisMapInstance = new maplibregl.Map({
+            container: 'domicile-map',
+            style: {
+                version: 8,
+                sources: {
+                    osm: {
+                        type: 'raster',
+                        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                        tileSize: 256,
+                        attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
+                    }
+                },
+                layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+            },
+            center: [2.3488, 48.8534],
+            zoom: 11
+        });
+        parisMapInstance.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+        parisMapInstance.on('load', () => {
+            parisMapInstance.addSource('domiciles', { type: 'geojson', data: geojsonData });
+            parisMapInstance.addLayer({
+                id: 'domiciles-point',
+                type: 'circle',
+                source: 'domiciles',
+                paint: {
+                    'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18],
+                    'circle-color': ['match', ['get', 'geoSource'], 'quartier', '#e67e22', PALETTE.brand],
+                    'circle-opacity': ['match', ['get', 'geoSource'], 'quartier', 0.5, 0.75],
+                    'circle-stroke-color': '#fff',
+                    'circle-stroke-width': 1
+                }
             });
+
+            let popup = null;
+            parisMapInstance.on('mouseenter', 'domiciles-point', (e) => {
+                parisMapInstance.getCanvas().style.cursor = 'pointer';
+                const p = e.features[0].properties;
+                const precisionNote = p.geoSource === 'quartier'
+                    ? '<br><em>position approximative (centre du quartier)</em>'
+                    : '';
+                popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: '260px' })
+                    .setLngLat(e.features[0].geometry.coordinates)
+                    .setHTML(`<strong>${escapeHtml(p.name)}</strong><br>Domiciles: ${p.count}${precisionNote}`)
+                    .addTo(parisMapInstance);
+            });
+            parisMapInstance.on('mouseleave', 'domiciles-point', () => {
+                parisMapInstance.getCanvas().style.cursor = '';
+                if (popup) { popup.remove(); popup = null; }
+            });
+        });
     }
 
     // ---- Search -------------------------------------------------------------

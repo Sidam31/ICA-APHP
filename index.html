@@ -12,6 +12,8 @@
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="icon" href="./Data/site.ico" type="image/x-icon">
     <link rel="stylesheet" href="assets/css/theme.css">
@@ -259,9 +261,9 @@
                 <div class="big-stat-card">
                     <h3>Rues de résidence géolocalisées à Paris</h3>
                     <p style="font-size: 0.85em; color: var(--pitie-gray-600); margin-bottom: 8px;">
-                        Sources : Lazare (1844) &amp; Perrot (1834) — seule une partie des rues est géolocalisée.
+                        Sources : Lazare (1844) &amp; Perrot (1834) — bleu : position précise · orange : centre du quartier (approximatif).
                     </p>
-                    <div id="domicile-map"></div>
+                    <div id="domicile-map" style="height: 500px;"></div>
                 </div>
             </div>
 
