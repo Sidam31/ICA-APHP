@@ -50,6 +50,7 @@
     let PALETTE = null;
     let parisStreets = [];
     let exactStreetLookup = null; // Map<normalized name/variant, street>
+    let quartierInfo = new Map(); // Map<quart number, { nom, arr }> — the 48 quartiers of 1811-1849
     let domicileMatchByRow = null; // WeakMap<row, matchResult> — built once, reused across filter changes
     let domicileChartInstance = null;
     let parisMapInstance = null; // MapLibre GL instance, created once and reused across filter changes
@@ -141,8 +142,12 @@
                             exactStreetLookup.set(an.nom.toLowerCase(), s);
                         }
                     });
+                    if (s.quart != null && !quartierInfo.has(s.quart)) {
+                        quartierInfo.set(s.quart, { nom: s.quartier, arr: s.arr });
+                    }
                 });
                 maybeBuildDomicileMatches();
+                updateStatistics();
             })
             .catch((error) => {
                 console.error('Erreur lors du chargement des rues de Paris:', error);
@@ -787,7 +792,6 @@
         dbData.forEach((row) => {
             domicileMatchByRow.set(row, matchParisStreet(row['Domicile']));
         });
-        updateStatistics();
     }
 
     function generateDomicileStats(data) {
@@ -797,7 +801,7 @@
             return;
         }
 
-        const arrCounts = {};
+        const quartierCounts = {};
         const streetPoints = new Map();
         let matchedCount = 0;
         let outsideParisCount = 0;
@@ -822,7 +826,7 @@
 
             const street = match.street;
             matchedCount++;
-            arrCounts[street.arr] = (arrCounts[street.arr] || 0) + 1;
+            quartierCounts[street.quart] = (quartierCounts[street.quart] || 0) + 1;
 
             // geoSource:'quartier' is a quartier-centroid fallback (one of only
             // 48 possible points, not the street's real location) — kept but
@@ -857,18 +861,23 @@
         }
 
         if (matchedCount > 0) {
-            drawArrondissementChart(arrCounts);
+            drawQuartierChart(quartierCounts);
             drawParisStreetMap(Array.from(streetPoints.values()));
         }
     }
 
-    function drawArrondissementChart(arrCounts) {
+    // 48 quartiers (1811-1849 scheme) rather than the coarser 12
+    // arrondissements — horizontal bars since 48 labels don't fit legibly
+    // side by side. Ordered by quartier number, which already groups them by
+    // arrondissement (quart 1-4 = 1er, 5-8 = 2e, etc.)
+    function drawQuartierChart(quartierCounts) {
         const labels = [];
         const values = [];
-        for (let i = 1; i <= 12; i++) {
-            labels.push(`${i}${i === 1 ? 'er' : 'e'}`);
-            values.push(arrCounts[i] || 0);
-        }
+        Array.from(quartierInfo.keys()).sort((a, b) => a - b).forEach((quart) => {
+            const info = quartierInfo.get(quart);
+            labels.push(`${quart}. ${info.nom} (${info.arr}${info.arr === 1 ? 'er' : 'e'})`);
+            values.push(quartierCounts[quart] || 0);
+        });
 
         const ctx = document.getElementById('domicile-arr-chart').getContext('2d');
         if (domicileChartInstance) domicileChartInstance.destroy();
@@ -878,15 +887,16 @@
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Domiciles par ancien arrondissement (1811-1860)',
+                    label: 'Domiciles par quartier (1811-1849)',
                     data: values,
                     backgroundColor: PALETTE.brand
                 }]
             },
             options: {
+                indexAxis: 'y',
                 responsive: false,
                 plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true } }
+                scales: { x: { beginAtZero: true } }
             }
         });
     }
@@ -895,25 +905,8 @@
         return String(str).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     }
 
-    // Real OSM-tiled map (MapLibre GL), same approach as rues-paris.html in
-    // the companion genealogy tool — a plain D3 scatter on a blank background
-    // gave no sense of *where* in Paris these points actually are. The map is
-    // created once and its data source updated on filter changes rather than
-    // torn down and rebuilt (rebuilding re-downloads every tile).
-    function drawParisStreetMap(points) {
-        const container = document.getElementById('domicile-map');
-
-        if (points.length === 0) {
-            if (parisMapInstance) {
-                const src = parisMapInstance.getSource('domiciles');
-                if (src) src.setData({ type: 'FeatureCollection', features: [] });
-            } else {
-                container.innerHTML = '<p>Aucune rue géolocalisée pour cette sélection.</p>';
-            }
-            return;
-        }
-
-        const geojsonData = {
+    function pointsToGeoJSON(points) {
+        return {
             type: 'FeatureCollection',
             features: points.map((p) => ({
                 type: 'Feature',
@@ -921,20 +914,47 @@
                 properties: { name: p.name, count: p.count, geoSource: p.geoSource }
             }))
         };
-        const maxCount = Math.max(...points.map((p) => p.count));
+    }
+
+    // Data to apply once the map's style/tiles finish loading. generateDomicileStats()
+    // runs more than once in quick succession while data is still loading (the CSV-load
+    // and streets-load completion handlers can each trigger a render), and MapLibre's
+    // 'load' event doesn't fire synchronously — so a second drawParisStreetMap() call
+    // can land before the first map instance is ready. Stashing the latest points here
+    // and reading them from the 'load' handler (rather than closing over a stale
+    // snapshot) means whichever call happens last still wins, without tearing down and
+    // recreating the map (which re-downloads every tile and can leave a dangling
+    // instance whose 'load' event fires against a container that's been wiped).
+    let parisMapPendingPoints = null;
+
+    // Real OSM-tiled map (MapLibre GL), same approach as rues-paris.html in
+    // the companion genealogy tool — a plain D3 scatter on a blank background
+    // gave no sense of *where* in Paris these points actually are.
+    function drawParisStreetMap(points) {
+        const container = document.getElementById('domicile-map');
 
         if (parisMapInstance) {
             const src = parisMapInstance.getSource('domiciles');
-            if (src) {
-                src.setData(geojsonData);
-                parisMapInstance.setPaintProperty('domiciles-point', 'circle-radius', [
-                    'interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18
-                ]);
+            if (!src) {
+                // Style/tiles still loading — the 'load' handler will pick this up.
+                parisMapPendingPoints = points;
                 return;
             }
+            src.setData(pointsToGeoJSON(points));
+            const maxCount = points.length ? Math.max(...points.map((p) => p.count)) : 1;
+            parisMapInstance.setPaintProperty('domiciles-point', 'circle-radius', [
+                'interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18
+            ]);
+            return;
+        }
+
+        if (points.length === 0) {
+            container.innerHTML = '<p>Aucune rue géolocalisée pour cette sélection.</p>';
+            return;
         }
 
         container.innerHTML = '';
+        parisMapPendingPoints = points;
         parisMapInstance = new maplibregl.Map({
             container: 'domicile-map',
             style: {
@@ -955,7 +975,11 @@
         parisMapInstance.addControl(new maplibregl.NavigationControl(), 'top-right');
 
         parisMapInstance.on('load', () => {
-            parisMapInstance.addSource('domiciles', { type: 'geojson', data: geojsonData });
+            const finalPoints = parisMapPendingPoints || [];
+            parisMapPendingPoints = null;
+            const maxCount = finalPoints.length ? Math.max(...finalPoints.map((p) => p.count)) : 1;
+
+            parisMapInstance.addSource('domiciles', { type: 'geojson', data: pointsToGeoJSON(finalPoints) });
             parisMapInstance.addLayer({
                 id: 'domiciles-point',
                 type: 'circle',
