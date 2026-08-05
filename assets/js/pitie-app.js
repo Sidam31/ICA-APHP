@@ -20,6 +20,7 @@
     const CONFIG = {
         csvUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/Relev%C3%A9s%20PIT%20-%20csv_export.csv',
         geoJsonUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/data_carte.geojson',
+        streetsJsonUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/rues-paris-lazare-1844.json',
         targetEntries: 45000,
         dataYearRange: [1809, 1860],
         maxResultsShown: 200,
@@ -47,6 +48,11 @@
     let advancedStatsRetryCount = 0;
     let mapTooltip = null;
     let PALETTE = null;
+    let parisStreets = [];
+    let exactStreetLookup = null; // Map<normalized name/variant, street>
+    let domicileMatchByRow = null; // WeakMap<row, matchResult> — built once, reused across filter changes
+    let domicileChartInstance = null;
+    let domicileMapTooltip = null;
 
     // ---- DA / theme -------------------------------------------------------
     // Reads the design tokens declared in assets/css/theme.css so chart
@@ -96,6 +102,7 @@
                 console.info(`${dbData.length} entrées chargées depuis le CSV`);
                 buildFuseIndexes();
                 populateFilterDropdowns();
+                maybeBuildDomicileMatches();
                 updateStatistics();
             },
             error: function (error) {
@@ -104,6 +111,42 @@
                     '<p class="text-center" style="color: var(--pitie-danger);">Erreur de chargement de la base de données. Veuillez réessayer plus tard.</p>';
             }
         });
+    }
+
+    // Loaded independently of the CSV (different source, no reason to block on
+    // each other) — whichever of the two finishes last triggers the domicile
+    // matching pass, see maybeBuildDomicileMatches().
+    function loadParisStreetsData() {
+        fetch(CONFIG.streetsJsonUrl)
+            .then((response) => response.json())
+            .then((json) => {
+                parisStreets = json.streets || [];
+                // Plain exact-match index (name + variants) rather than a Fuse
+                // fuzzy index: benchmarked against the real dataset, a Fuse
+                // search per row (even deduplicated, even with a tightened
+                // distance) took minutes and froze the page — a fuzzy pass
+                // over 2500+ streets just isn't cheap enough to do per-row.
+                // Unmatched streets are logged (like the department fix) for
+                // manual alias cleanup instead of guessed at automatically.
+                exactStreetLookup = new Map();
+                parisStreets.forEach((s) => {
+                    if (!exactStreetLookup.has(s.name.toLowerCase())) exactStreetLookup.set(s.name.toLowerCase(), s);
+                    (s.variants || []).forEach((v) => {
+                        if (!exactStreetLookup.has(v.toLowerCase())) exactStreetLookup.set(v.toLowerCase(), s);
+                    });
+                    // Former names (pre-1844 renames, Revolutionary-era names from
+                    // Lacombe) — deaths recorded in 1809-1860 can predate a rename.
+                    (s.ancien_noms || []).forEach((an) => {
+                        if (an.nom && !exactStreetLookup.has(an.nom.toLowerCase())) {
+                            exactStreetLookup.set(an.nom.toLowerCase(), s);
+                        }
+                    });
+                });
+                maybeBuildDomicileMatches();
+            })
+            .catch((error) => {
+                console.error('Erreur lors du chargement des rues de Paris:', error);
+            });
     }
 
     // Built once when the dataset loads, reused for every search — avoids
@@ -123,12 +166,9 @@
         const departments = new Set();
         dbData.forEach((row) => {
             const birthplace = row['Lieu de naissance'];
-            if (birthplace) {
-                const match = birthplace.match(/\(([^)]+)\)/);
-                if (match) {
-                    const filteredDept = stripAccents(match[1].trim());
-                    departments.add(filteredDept);
-                }
+            const historicalDept = extractHistoricalDeptRaw(birthplace);
+            if (historicalDept) {
+                departments.add(stripAccents(historicalDept));
             }
         });
         const deptSelect = document.getElementById('filter-department');
@@ -184,8 +224,8 @@
             if (currentFilters.department) {
                 const birthplace = row['Lieu de naissance'].trim();
                 if (!birthplace) return false;
-                const match = birthplace.match(/\(([^)]+)\)/);
-                if (!match || stripAccents(match[1].trim()) !== currentFilters.department) {
+                const historicalDept = extractHistoricalDeptRaw(birthplace);
+                if (!historicalDept || stripAccents(historicalDept) !== currentFilters.department) {
                     return false;
                 }
             }
@@ -255,6 +295,7 @@
             generateAgeHistogram(filteredData);
             generateProfChart(filteredData);
             generateDepartChart(filteredData);
+            generateDomicileStats(filteredData);
         }
     }
 
@@ -491,6 +532,49 @@
         'Brabant': 'B11'
     };
 
+    // The register spells the same department several ways ("Seine et Oise" /
+    // "Seine-et-Oise" / "Seine-inférieure" vs "Seine-Inférieure"...). Folding
+    // whitespace to hyphens and lower-casing before lookup collapses almost
+    // all of that onto the canonical keys above.
+    function normalizeHistoricalDeptKey(name) {
+        return name.trim().replace(/\s+/g, '-').replace(/-+/g, '-').toLowerCase();
+    }
+
+    // Transcription variants/typos that survive normalizeHistoricalDeptKey()
+    // but still don't match their canonical dictionary key letter-for-letter.
+    const HISTORICAL_DEPT_ALIASES = {
+        'eure-et-loire': 'eure-et-loir', // "Eure et Loire" — official name is "Eure-et-Loir"
+        'côtes-de-nord': 'côtes-du-nord', // "de" typo'd for "du"
+        'seine-oise': 'seine-et-oise' // "et" dropped
+    };
+
+    const NORMALIZED_HISTORICAL_DEPTS = new Map(
+        Object.entries(HISTORICAL_TO_MODERN_DEPTS).map(([name, code]) => [normalizeHistoricalDeptKey(name), code])
+    );
+
+    function resolveModernDeptCode(historicalDept) {
+        const key = normalizeHistoricalDeptKey(historicalDept);
+        return NORMALIZED_HISTORICAL_DEPTS.get(HISTORICAL_DEPT_ALIASES[key] || key);
+    }
+
+    // "Lieu de naissance" is "Commune (Département)", but some rows have an
+    // illegible/placeholder first parenthetical ("...", "???") ahead of the
+    // real one, or append a "{Commune (ModernName)}" transcriber's aside.
+    // Braces are dropped and the last non-placeholder top-level parenthetical
+    // is taken as the department.
+    function extractHistoricalDeptRaw(birthplace) {
+        if (!birthplace) return null;
+        const withoutAsides = birthplace.replace(/\{[^}]*\}/g, '');
+        const matches = withoutAsides.match(/\(([^)]*)\)/g) || [];
+        for (let i = matches.length - 1; i >= 0; i--) {
+            const candidate = matches[i].slice(1, -1).trim().replace(/[.,;]+$/, '');
+            if (candidate && !/^[.?…]+$/.test(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
     function generateDepartChart(data) {
         var deptCounts = {};
         var nonRecognizedDepartments = new Set();
@@ -498,10 +582,9 @@
             const birthplace = row['Lieu de naissance'];
             if (!birthplace) return;
 
-            const match = birthplace.match(/\(([^)]+)\)/);
-            if (match) {
-                const historicalDept = match[1].trim();
-                const modernCode = HISTORICAL_TO_MODERN_DEPTS[historicalDept];
+            const historicalDept = extractHistoricalDeptRaw(birthplace);
+            if (historicalDept) {
+                const modernCode = resolveModernDeptCode(historicalDept);
 
                 if (modernCode) {
                     deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
@@ -643,6 +726,231 @@
         legend.append('g')
             .attr('transform', `translate(0, ${legendHeight})`)
             .call(legendAxis);
+    }
+
+    // ---- Domicile / Paris streets -------------------------------------------
+    // "Domicile" entries that describe something other than a residential
+    // street address — hospital-transfer origins, evacuees, "no fixed abode"
+    // — so they're excluded from the street match instead of being logged as
+    // unrecognized addresses.
+    const NON_ADDRESS_DOMICILE_RE = /^(n\/?c\.?$|sans\s+(domicile|asile)|venant\b|arrivant\b|par\s+[ée]vacuation|en\s+cet\s+h[oô]pital|h[oô]pital|hotel[\s-]dieu)/i;
+
+    // "Domicile" is "N°, rue X (Quartier)". The parenthetical quartier name is
+    // frequently a stale Revolutionary-era section name or just misspelled, so
+    // matching is done on the street name (via the Lazare/Perrot dataset's own
+    // curated `variants`) rather than on that quartier text.
+    function extractParisStreetName(trimmed) {
+        let rest = trimmed.replace(/^\d+\s*(bis|ter|quater)?\s*(et\s*\d+\s*(bis|ter|quater)?)?\s*,?\s*/i, '');
+        const parenIdx = rest.indexOf('(');
+        if (parenIdx !== -1) rest = rest.slice(0, parenIdx);
+        return rest.trim();
+    }
+
+    // A handful of standard abbreviations the Lazare `variants` lists don't
+    // always cover.
+    function normalizeStreetQuery(name) {
+        return name
+            .replace(/\bSte\b\.?/gi, 'Sainte')
+            .replace(/\bSt\b\.?/gi, 'Saint')
+            .replace(/\bBd\b\.?/gi, 'Boulevard')
+            .replace(/\bFg\b\.?/gi, 'Faubourg')
+            .trim();
+    }
+
+    // Returns null (blank/not an address), { outsideParis: true } (bracketed
+    // "[Commune (Département)]" entries), { unmatched: true, query } (looked
+    // like a street but no exact/normalized match in the Lazare/Perrot
+    // dataset), or { street } on a match.
+    function matchParisStreet(domicile) {
+        if (!domicile) return null;
+        const trimmed = domicile.trim();
+        if (!trimmed) return null;
+        if (trimmed.startsWith('[')) return { outsideParis: true };
+        if (NON_ADDRESS_DOMICILE_RE.test(trimmed)) return null;
+
+        const streetName = extractParisStreetName(trimmed);
+        if (!streetName) return null;
+
+        const query = normalizeStreetQuery(streetName).toLowerCase();
+        const street = exactStreetLookup.get(query);
+        if (!street) return { unmatched: true, query: streetName };
+        return { street };
+    }
+
+    // Done once when both sources are loaded and cached per row (by object
+    // reference, stable across filter changes) rather than redone on every
+    // generateDomicileStats() call.
+    function maybeBuildDomicileMatches() {
+        if (!exactStreetLookup || dbData.length === 0 || domicileMatchByRow) return;
+
+        domicileMatchByRow = new WeakMap();
+        dbData.forEach((row) => {
+            domicileMatchByRow.set(row, matchParisStreet(row['Domicile']));
+        });
+        updateStatistics();
+    }
+
+    function generateDomicileStats(data) {
+        const summaryEl = document.getElementById('domicile-stats-summary');
+        if (!domicileMatchByRow) {
+            if (summaryEl) summaryEl.textContent = 'Chargement des données de rues de Paris...';
+            return;
+        }
+
+        const arrCounts = {};
+        const streetPoints = new Map();
+        let matchedCount = 0;
+        let outsideParisCount = 0;
+        let unmatchedCount = 0;
+        const unmatchedSamples = new Set();
+
+        data.forEach((row) => {
+            const domicile = row['Domicile'];
+            if (!domicile) return;
+            const match = domicileMatchByRow.get(row);
+            if (!match) return;
+
+            if (match.outsideParis) {
+                outsideParisCount++;
+                return;
+            }
+            if (match.unmatched) {
+                unmatchedCount++;
+                unmatchedSamples.add(match.query);
+                return;
+            }
+
+            const street = match.street;
+            matchedCount++;
+            arrCounts[street.arr] = (arrCounts[street.arr] || 0) + 1;
+
+            // geoSource:'quartier' is a quartier-centroid fallback (one of only
+            // 48 possible points), not the street's real location — plotting it
+            // would stack every ungeocoded street in a quartier on one dot, so
+            // it's excluded here even though it's fine for the arr count above.
+            if (street.lat && street.lon && street.geoSource !== 'quartier') {
+                if (!streetPoints.has(street.name)) {
+                    streetPoints.set(street.name, { lat: street.lat, lon: street.lon, count: 0, name: street.name });
+                }
+                streetPoints.get(street.name).count++;
+            }
+        });
+
+        if (unmatchedCount > 0) {
+            console.warn(
+                `Adresses parisiennes non reconnues: ${unmatchedCount} entrées, ${unmatchedSamples.size} rues distinctes`,
+                Array.from(unmatchedSamples)
+            );
+        }
+
+        if (summaryEl) {
+            summaryEl.textContent =
+                `${matchedCount.toLocaleString('fr-FR')} domiciles localisés · ` +
+                `${outsideParisCount.toLocaleString('fr-FR')} hors Paris · ` +
+                `${unmatchedCount.toLocaleString('fr-FR')} non reconnus`;
+        }
+
+        if (matchedCount > 0) {
+            drawArrondissementChart(arrCounts);
+            drawParisStreetMap(Array.from(streetPoints.values()));
+        }
+    }
+
+    function drawArrondissementChart(arrCounts) {
+        const labels = [];
+        const values = [];
+        for (let i = 1; i <= 12; i++) {
+            labels.push(`${i}${i === 1 ? 'er' : 'e'}`);
+            values.push(arrCounts[i] || 0);
+        }
+
+        const ctx = document.getElementById('domicile-arr-chart').getContext('2d');
+        if (domicileChartInstance) domicileChartInstance.destroy();
+
+        domicileChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Domiciles par ancien arrondissement (1811-1860)',
+                    data: values,
+                    backgroundColor: PALETTE.brand
+                }]
+            },
+            options: {
+                responsive: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    // Only ~47% of the 2524 Lazare/Perrot streets carry lat/lon (Wikidata or
+    // OSM geocoding) — this scatter plots that geocoded subset; the
+    // arrondissement chart above is the one with full coverage.
+    function drawParisStreetMap(points) {
+        const container = document.getElementById('domicile-map');
+        container.innerHTML = '';
+        domicileMapTooltip = null; // container was cleared, any previously appended tooltip node is gone with it
+
+        if (points.length === 0) {
+            container.innerHTML = '<p>Aucune rue géolocalisée pour cette sélection.</p>';
+            return;
+        }
+
+        const width = Math.min(container.offsetWidth || 600, 600);
+        const height = 500;
+
+        const svg = d3.select('#domicile-map')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height);
+
+        const geoPoints = {
+            type: 'FeatureCollection',
+            features: points.map((p) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] } }))
+        };
+        const projection = d3.geoMercator().fitExtent([[24, 24], [width - 24, height - 24]], geoPoints);
+
+        const maxCount = Math.max(...points.map((p) => p.count));
+        const radiusScale = d3.scaleSqrt().domain([0, maxCount]).range([2, 16]);
+
+        if (!domicileMapTooltip) {
+            domicileMapTooltip = document.querySelector('.pitie-app').appendChild(document.createElement('div'));
+        }
+        const tooltip = d3.select(domicileMapTooltip)
+            .style('position', 'absolute')
+            .style('background', 'white')
+            .style('padding', '8px')
+            .style('border', '1px solid #ccc')
+            .style('border-radius', '4px')
+            .style('pointer-events', 'none')
+            .style('opacity', 0)
+            .style('font-size', '12px')
+            .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
+
+        svg.selectAll('circle')
+            .data(points)
+            .enter()
+            .append('circle')
+            .attr('cx', (d) => projection([d.lon, d.lat])[0])
+            .attr('cy', (d) => projection([d.lon, d.lat])[1])
+            .attr('r', (d) => radiusScale(d.count))
+            .attr('fill', PALETTE.brand)
+            .attr('fill-opacity', 0.6)
+            .attr('stroke', PALETTE.mapStroke)
+            .attr('stroke-width', 0.5)
+            .on('mouseover', function (event, d) {
+                d3.select(this).attr('fill-opacity', 0.9);
+                tooltip.transition().duration(200).style('opacity', 1);
+                tooltip.html(`<strong>${d.name}</strong><br/>Domiciles: ${d.count}`)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+            })
+            .on('mouseout', function () {
+                d3.select(this).attr('fill-opacity', 0.6);
+                tooltip.transition().duration(200).style('opacity', 0);
+            });
     }
 
     // ---- Search -------------------------------------------------------------
@@ -986,9 +1294,7 @@
     }
 
     function extractDepartmentAdvanced(val) {
-        if (!val) return 'Inconnu';
-        let match = val.match(/\((.*?)\)/);
-        return (match && match[1]) ? match[1].trim() : 'Inconnu';
+        return extractHistoricalDeptRaw(val) || 'Inconnu';
     }
 
     function calculateSmartMax(matrix) {
@@ -1347,6 +1653,7 @@
         PALETTE = readPalette();
         bindEvents();
         loadCSVData();
+        loadParisStreetsData();
         initializeNavigation();
     }
 
