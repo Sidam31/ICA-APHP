@@ -6,7 +6,7 @@
  * collide with a host page's globals).
  *
  * Requires (loaded before this file, in this order): Fuse.js, PapaParse,
- * D3 v7 (+ d3-cloud), Chart.js, Plotly, lodash, mathjs, and
+ * D3 v7, Chart.js, Plotly, lodash, mathjs, MapLibre and
  * assets/css/theme.css linked in <head> (chart colors are read from its
  * --pitie-chart-* custom properties at init time).
  *
@@ -19,7 +19,8 @@
     // ---- Config -------------------------------------------------------
     const CONFIG = {
         csvUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/Relev%C3%A9s%20PIT%20-%20csv_export.csv',
-        geoJsonUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/data_carte.geojson',
+        empireMapUrl: 'Data/empire_1811_departements.json',
+        quartierGeoUrl: 'Data/quartier_paris.geojson',
         streetsJsonUrl: 'https://sidam31.github.io/Outils-genealogiques/assets/data/rues-paris-lazare-1844.json',
         targetEntries: 45000,
         dataYearRange: [1809, 1860],
@@ -40,19 +41,15 @@
     let filteredData = [];
     let currentFilters = { sex: '', age: '', department: '', cause: '' };
     let fuseIndexes = {};
-    let causeChartInstance = null;
-    let ageHistogramInstance = null;
-    let profChartInstance = null;
+    const charts = {}; // Chart.js instances, by key
     let ADVANCED_DATA = [];
     let advancedStatsLoaded = false;
     let advancedStatsRetryCount = 0;
-    let mapTooltip = null;
     let PALETTE = null;
     let parisStreets = [];
     let exactStreetLookup = null; // Map<normalized name/variant, street>
     let quartierInfo = new Map(); // Map<quart number, { nom, arr }> — the 48 quartiers of 1811-1849
     let domicileMatchByRow = null; // WeakMap<row, matchResult> — built once, reused across filter changes
-    let domicileChartInstance = null;
     let parisMapInstance = null; // MapLibre GL instance, created once and reused across filter changes
 
     // ---- DA / theme -------------------------------------------------------
@@ -63,16 +60,23 @@
         const cs = getComputedStyle(document.documentElement);
         const v = (name) => cs.getPropertyValue(name).trim();
         return {
-            sequential: Array.from({ length: 12 }, (_, i) => v(`--pitie-chart-seq-${i + 1}`)),
-            categorical: Array.from({ length: 18 }, (_, i) => v(`--pitie-chart-cat-${i + 1}`)),
-            male: v('--pitie-chart-male'),
-            female: v('--pitie-chart-female'),
+            s1: v('--pitie-chart-s1'),
+            s2: v('--pitie-chart-s2'),
+            other: v('--pitie-chart-other'),
+            sequential: Array.from({ length: 7 }, (_, i) => v(`--pitie-chart-seq-${i + 1}`)),
+            male: v('--pitie-chart-s1'),
+            female: v('--pitie-chart-s2'),
             maleShades: [1, 2, 3].map((i) => v(`--pitie-chart-male-${i}`)),
             femaleShades: [1, 2, 3].map((i) => v(`--pitie-chart-female-${i}`)),
-            meanLine: v('--pitie-chart-mean-line'),
-            peakLine: v('--pitie-chart-peak-line'),
             bandFill: v('--pitie-chart-band-fill'),
+            ink: v('--pitie-chart-ink'),
+            ink2: v('--pitie-chart-ink-2'),
+            muted: v('--pitie-chart-muted'),
+            grid: v('--pitie-chart-grid'),
+            axis: v('--pitie-chart-axis'),
+            sea: v('--pitie-chart-sea'),
             mapEmpty: v('--pitie-map-empty'),
+            mapForeign: v('--pitie-map-foreign'),
             mapStroke: v('--pitie-map-stroke'),
             brand: v('--pitie-blue')
         };
@@ -89,6 +93,182 @@
 
     function stripAccents(str) {
         return str.normalize('NFD').replace(DIACRITICS_RE, '');
+    }
+
+    // ---- Chart helpers ----------------------------------------------------
+    const MONTH_NAMES = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    // Years with fewer indexed entries than this are left out of the time charts:
+    // they are partially transcribed registers, so their "zeros" are missing data, not absence of deaths.
+    const MIN_YEAR_ENTRIES = 100;
+    const FONT = "'Inter', sans-serif";
+
+    const fmtInt = (n) => Math.round(n).toLocaleString('fr-FR');
+    const fmtPct = (n, digits = 1) => n.toLocaleString('fr-FR', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + ' %';
+
+    function median(values) {
+        if (!values.length) return null;
+        const v = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(v.length / 2);
+        return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+    }
+
+    // "64", "18,5", "21  1/2", "6 mois", "1 jour" -> years (null when unreadable)
+    function parseAge(raw) {
+        if (raw === undefined || raw === null) return null;
+        const s = String(raw).trim().toLowerCase().replace(',', '.');
+        if (!s) return null;
+        const m = s.match(/^(\d+(?:\.\d+)?)(?:\s+(\d+)\/(\d+))?/);
+        if (!m) return null;
+        let age = parseFloat(m[1]);
+        if (m[2] && m[3] && Number(m[3]) > 0) age += Number(m[2]) / Number(m[3]);
+        if (/mois/.test(s)) age /= 12;
+        else if (/semaine/.test(s)) age /= 52;
+        else if (/jour/.test(s)) age = 0;
+        return age >= 0 && age <= 110 ? age : null;
+    }
+
+    // Groups spellings that only differ by case / accents / spacing; the label shown is the
+    // most frequent spelling. Returns [[label, count], ...] sorted by count.
+    function tallyLabels(values) {
+        const groups = new Map();
+        values.forEach((raw) => {
+            const key = stripAccents(raw.toLowerCase()).replace(/\s+/g, ' ');
+            let g = groups.get(key);
+            if (!g) { g = { n: 0, spellings: new Map() }; groups.set(key, g); }
+            g.n++;
+            g.spellings.set(raw, (g.spellings.get(raw) || 0) + 1);
+        });
+        return [...groups.values()]
+            .map((g) => [capitalizeFirstLetter([...g.spellings.entries()].sort((a, b) => b[1] - a[1])[0][0]), g.n])
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'fr'));
+    }
+
+    function applyChartDefaults() {
+        Chart.defaults.font.family = FONT;
+        Chart.defaults.font.size = 12;
+        Chart.defaults.color = PALETTE.ink2;
+        Chart.defaults.borderColor = PALETTE.grid;
+        Chart.defaults.plugins.legend.labels.boxWidth = 12;
+        Chart.defaults.plugins.legend.labels.boxHeight = 12;
+    }
+
+    // Value written at the end of a horizontal bar (only for the bars `format` returns text for).
+    const endLabelsPlugin = {
+        id: 'endLabels',
+        afterDatasetsDraw(chart, args, opts) {
+            if (!opts || typeof opts.format !== 'function') return;
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = `500 11px ${FONT}`;
+            ctx.fillStyle = PALETTE.ink2;
+            ctx.textBaseline = 'middle';
+            chart.getDatasetMeta(0).data.forEach((bar, i) => {
+                const text = opts.format(chart.data.datasets[0].data[i], i);
+                if (text) ctx.fillText(text, bar.x + 6, bar.y);
+            });
+            ctx.restore();
+        }
+    };
+
+    const baseScales = (extraX = {}) => ({
+        x: Object.assign({ beginAtZero: true, grid: { color: PALETTE.grid }, border: { display: false }, ticks: { callback: (v) => fmtInt(v) } }, extraX),
+        y: {
+            grid: { display: false },
+            border: { color: PALETTE.axis },
+            ticks: {
+                autoSkip: false,
+                callback(v) {
+                    const l = String(this.getLabelForValue(v));
+                    return l.length > 34 ? l.slice(0, 33) + '…' : l;
+                }
+            }
+        }
+    });
+
+    // Ranked horizontal bars (one colour; optional muted "other" bar). entries: [[label, n], ...]
+    function drawRankedBars(key, canvasId, entries, { total, otherIndex = -1, unit = 'décès', labelFormat } = {}) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        if (charts[key]) charts[key].destroy();
+        const values = entries.map((e) => e[1]);
+        const pct = (n) => (total ? fmtPct((n / total) * 100) : '');
+        charts[key] = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: entries.map((e) => e[0]),
+                datasets: [{
+                    data: values,
+                    backgroundColor: values.map((_, i) => (i === otherIndex ? PALETTE.other : PALETTE.s1)),
+                    borderRadius: 4,
+                    borderSkipped: 'start',
+                    barPercentage: 0.7,
+                    categoryPercentage: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { right: 96 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (c) => `${fmtInt(c.raw)} ${unit}${total ? ` (${pct(c.raw)})` : ''}` } },
+                    endLabels: { format: labelFormat || ((v) => (total ? `${fmtInt(v)} · ${pct(v)}` : fmtInt(v))) }
+                },
+                scales: baseScales()
+            },
+            plugins: [endLabelsPlugin]
+        });
+    }
+
+    // Keeps the `k` biggest entries and folds the rest into one "other" entry.
+    function topWithOther(entries, k, otherLabel) {
+        const top = entries.slice(0, k);
+        const rest = entries.slice(k).reduce((s, e) => s + e[1], 0);
+        return { top, rest, list: rest > 0 ? [...top, [otherLabel, rest]] : top };
+    }
+
+    function setNote(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    }
+
+    // Table twin of a chart: every value stays reachable without hover or colour.
+    function setTableView(anchorId, viewId, headers, rows) {
+        const anchor = document.getElementById(anchorId);
+        const host = anchor && anchor.closest('.big-stat-card');
+        if (!host) return;
+        let d = host.querySelector(`details[data-view="${viewId}"]`);
+        if (!d) {
+            d = document.createElement('details');
+            d.className = 'viz-table';
+            d.dataset.view = viewId;
+            host.appendChild(d);
+        }
+        const head = headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('');
+        const body = rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+        d.innerHTML = `<summary>Voir les données (tableau)</summary><div class="viz-table-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    }
+
+    const PLOTLY_CONFIG = { responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d', 'autoScale2d', 'toggleSpikelines'] };
+
+    function plotlyLayout(extra) {
+        const axis = { gridcolor: PALETTE.grid, linecolor: PALETTE.axis, zerolinecolor: PALETTE.axis, tickcolor: PALETTE.axis, automargin: true };
+        return _.merge({
+            font: { family: FONT, size: 12, color: PALETTE.ink2 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            margin: { t: 16, r: 16, b: 48, l: 56 },
+            xaxis: Object.assign({}, axis),
+            yaxis: Object.assign({}, axis),
+            hoverlabel: { font: { family: FONT, size: 12 } }
+        }, extra);
+    }
+
+    // One-hue sequential colorscale for Plotly; an exact zero stays neutral so "0" never reads as "a little".
+    function sequentialColorscale() {
+        const seq = PALETTE.sequential;
+        return [[0, '#f1f0eb'], [0.0001, seq[0]]].concat(seq.slice(1).map((c, i) => [(i + 1) / (seq.length - 1), c]));
     }
 
     // ---- Data loading -------------------------------------------------------
@@ -213,11 +393,9 @@
             }
 
             if (currentFilters.age) {
-                const ageStr = row['Âge'].trim();
-                if (!ageStr) return false;
-                const ageMatch = ageStr.match(/^([0-9]*[.|,]?[0-9]*)$/);
-                if (!ageMatch) return false;
-                const age = parseFloat(ageMatch[1].replace(',', '.'));
+                const parsed = parseAge(row['Âge']);
+                if (parsed === null) return false;
+                const age = Math.floor(parsed); // 10,5 ans belongs to "0-10", not to the gap between bands
                 const [min, max] = currentFilters.age.includes('+')
                     ? [81, 200]
                     : currentFilters.age.split('-').map(Number);
@@ -247,6 +425,7 @@
 
         updateActiveFiltersDisplay();
         updateStatistics();
+        refreshAdvancedStats();
     }
 
     function resetFilters() {
@@ -258,6 +437,7 @@
         filteredData = [...dbData];
         updateActiveFiltersDisplay();
         updateStatistics();
+        refreshAdvancedStats();
     }
 
     function updateActiveFiltersDisplay() {
@@ -295,219 +475,140 @@
             const completionRate = Math.min(100, (dbData.length / CONFIG.targetEntries) * 100);
             document.getElementById('completion-rate').textContent = completionRate.toFixed(1) + '%';
 
-            generateCausesChart(filteredData);
-            generateWordCloud(filteredData);
+            generateSurnameChart(filteredData);
             generateAgeHistogram(filteredData);
+            generateCausesChart(filteredData);
             generateProfChart(filteredData);
             generateDepartChart(filteredData);
             generateDomicileStats(filteredData);
         }
     }
 
-    function generateWordCloud(data) {
-        const nameCounts = data.reduce((acc, row) => {
-            var name = row['NOM'] ? row['NOM'].trim().toUpperCase() : '';
-            if (name) acc[name] = (acc[name] || 0) + 1;
-            name = row['NOM CONJOINT'] ? row['NOM CONJOINT'].trim().toUpperCase() : '';
-            if (name) acc[name] = (acc[name] || 0) + 1;
-            return acc;
-        }, {});
+    function generateSurnameChart(data) {
+        const names = data.map((row) => (row['NOM'] || '').trim().toUpperCase()).filter(Boolean);
+        const ranked = tallyLabels(names).map(([label, n]) => [label.toUpperCase(), n]);
+        const top = ranked.slice(0, 20);
 
-        const maxWords = 100;
-        const words = Object.entries(nameCounts)
-            .map(([text, size]) => ({ text, size }))
-            .sort((a, b) => b.size - a.size)
-            .slice(0, maxWords);
-
-        const actualCount = words.length;
-        document.getElementById('word-cloud-title').textContent =
-            `Les ${actualCount} Noms de famille les plus fréquents`;
-
-        var [width] = [document.getElementById('word-cloud').offsetWidth];
-        const height = 300;
-        if (width === 0) width = document.getElementById('project-card').offsetWidth * 0.8;
-        if (width === 0) width = document.getElementById('search-card').offsetWidth * 0.8;
-        if (width === 0) width = document.getElementById('join-card').offsetWidth * 0.8;
-        if (width === 0) width = 300;
-
-        const layout = d3.layout.cloud()
-            .size([width, height])
-            .words(words)
-            .padding(5)
-            .rotate(() => (~~(Math.random() * 6) - 3) * 30)
-            .font('Inter')
-            .fontSize((d) => Math.sqrt(d.size) * 10)
-            .on('end', draw)
-            .timeInterval(20);
-
-        layout.start();
-
-        function draw(words) {
-            d3.select('#word-cloud').html('');
-            d3.select('#word-cloud').append('svg')
-                .attr('width', layout.size()[0])
-                .attr('height', layout.size()[1])
-                .append('g')
-                .attr('transform', 'translate(' + layout.size()[0] / 2 + ',' + layout.size()[1] / 2 + ')')
-                .selectAll('text')
-                .data(words)
-                .enter().append('text')
-                .style('font-size', (d) => d.size + 'px')
-                .style('font-family', 'Inter')
-                .style('fill', PALETTE.brand)
-                .attr('text-anchor', 'middle')
-                .attr('transform', (d) => `translate(${[d.x, d.y]})rotate(${d.rotate})`)
-                .text((d) => d.text);
-        }
+        document.getElementById('word-cloud-title').textContent = `Les ${top.length} noms de famille les plus fréquents`;
+        drawRankedBars('surnames', 'surname-chart', top, { total: names.length, unit: 'défunts' });
+        setTableView('surname-chart', 'surnames', ['Nom', 'Défunts', 'Part'],
+            top.map(([l, n]) => [l, fmtInt(n), fmtPct((n / names.length) * 100)]));
     }
 
     function generateCausesChart(data) {
-        const causeCounts = data.reduce((acc, row) => {
-            const cause = row['Cause de mort: espèce'] ? row['Cause de mort: espèce'].trim() : 'N/C';
-            if (cause && cause !== 'N/C') acc[cause] = (acc[cause] || 0) + 1;
-            return acc;
-        }, {});
+        const causes = data
+            .map((row) => (row['Cause de mort: espèce'] || '').trim().replace(/\s+/g, ' '))
+            .filter((c) => c && c.toLowerCase() !== 'n/c');
+        const ranked = tallyLabels(causes);
+        const { top, rest } = topWithOther(ranked, 15, 'Autres');
+        const topShare = causes.length ? ((causes.length - rest) / causes.length) * 100 : 0;
 
-        var sortedCauses = Object.entries(causeCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 14);
-        sortedCauses.push(['Autres', Object.values(causeCounts).reduce((a, b) => a + b, 0) - sortedCauses.reduce((a, [, b]) => a + b, 0)]);
-        const labels = sortedCauses.map((entry) => entry[0]);
-        const values = sortedCauses.map((entry) => entry[1]);
+        setNote('causes-summary',
+            `${fmtInt(causes.length)} décès avec une cause indiquée, ${fmtInt(ranked.length)} formulations différentes. ` +
+            `Les 15 premières couvrent ${fmtPct(topShare, 0)} des décès, les ${fmtInt(ranked.length - 15)} autres formulations se partagent le reste ` +
+            `(« phtisie » et « phtisie pulmonaire » sont comptées séparément, comme écrit dans le registre).`);
+        drawRankedBars('causes', 'causes-chart', top, { total: causes.length });
+        setTableView('causes-chart', 'causes', ['Cause', 'Décès', 'Part'],
+            ranked.slice(0, 40).map(([l, n]) => [l, fmtInt(n), fmtPct((n / causes.length) * 100)]));
+    }
 
-        const ctx = document.getElementById('causes-chart').getContext('2d');
+    // Spelling / gender variants folded together so that "Journalière" and "Journalier" count once.
+    const PROFESSION_GROUPS = [
+        [/^journali[eè]re?/i, 'Journalier.e'],
+        [/^ouvri[eè]re?/i, 'Ouvrier.e'],
+        [/^coutur/i, 'Couturier.e'],
+        [/^tailleu(r|se)$/i, 'Tailleur.se'],
+        [/^porteu(r|se) d'eau/i, "Porteur.se d'eau"],
+        [/^(soldat|militaire|infanterie|fusilier|caporal|garde|dragon|cavalier|chasseur|artilleur|voltigeur)/i, 'Militaire'],
+        [/^marchand/i, 'Marchand.e'],
+        [/^agricult/i, 'Agriculteur.rice'],
+        [/^revendeu/i, 'Revendeur.se']
+    ];
 
-        if (causeChartInstance) causeChartInstance.destroy();
+    function normalizeProfession(raw) {
+        const p = (raw || '').trim();
+        if (!p || /^n\/c$/i.test(p) || /^sans [ée]tat$/i.test(p)) return null;
+        const hit = PROFESSION_GROUPS.find(([re]) => re.test(p));
+        return hit ? hit[1] : p;
+    }
 
-        causeChartInstance = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Top 14 des causes de décès les plus fréquentes',
-                    data: values,
-                    backgroundColor: PALETTE.sequential,
-                    borderColor: '#FFFFFF',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: false,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: { display: false }
-                }
-            }
-        });
+    function generateProfChart(data) {
+        const jobs = data.map((row) => normalizeProfession(row['Profession'])).filter(Boolean);
+        const ranked = tallyLabels(jobs);
+        const { top, rest } = topWithOther(ranked, 15, 'Autres');
+        const topShare = jobs.length ? ((jobs.length - rest) / jobs.length) * 100 : 0;
+
+        setNote('prof-summary',
+            `${fmtInt(jobs.length)} défunts avec une profession (hors « sans état »), ${fmtInt(ranked.length)} professions différentes. ` +
+            `Les 15 premières couvrent ${fmtPct(topShare, 0)}, les autres se partagent le reste.`);
+        drawRankedBars('professions', 'prof-chart', top, { total: jobs.length, unit: 'défunts' });
+        setTableView('prof-chart', 'professions', ['Profession', 'Défunts', 'Part'],
+            ranked.slice(0, 40).map(([l, n]) => [l, fmtInt(n), fmtPct((n / jobs.length) * 100)]));
     }
 
     function generateAgeHistogram(data) {
-        const bins = {};
-        const labels = [];
-        for (let i = 0; i <= 100; i += 5) {
-            const label = `${i}-${i + 4}`;
-            labels.push(label);
-            bins[label] = { M: 0, F: 0 };
-        }
-
+        const ages = { M: [], F: [] };
         data.forEach((row) => {
-            const ageStr = row['Âge'];
             const sex = row['Sexe'];
-            if (!ageStr || (sex !== 'M' && sex !== 'F')) return;
-
-            const ageMatch = ageStr.match(/^([0-9]*[.|,]?[0-9]*)$/);
-            if (!ageMatch) return;
-
-            const age = parseFloat(ageMatch[1].replace(',', '.'));
-            const binIndex = Math.floor(age / 5);
-            const label = `${binIndex * 5}-${binIndex * 5 + 4}`;
-
-            if (bins[label]) bins[label][sex]++;
+            if (sex !== 'M' && sex !== 'F') return;
+            const age = parseAge(row['Âge']);
+            if (age !== null) ages[sex].push(age);
         });
 
-        const maleData = labels.map((label) => -bins[label].M);
-        const femaleData = labels.map((label) => bins[label].F);
+        const maxAge = Math.max(0, ...ages.M, ...ages.F);
+        const binCount = Math.floor(maxAge / 5) + 1;
+        const labels = Array.from({ length: binCount }, (_, i) => `${i * 5}–${i * 5 + 4}`);
+        const bins = { M: Array(binCount).fill(0), F: Array(binCount).fill(0) };
+        ['M', 'F'].forEach((sex) => ages[sex].forEach((a) => { bins[sex][Math.floor(a / 5)]++; }));
 
-        const ctx = document.getElementById('age-histogram-chart').getContext('2d');
-        if (ageHistogramInstance) ageHistogramInstance.destroy();
+        const limit = Math.max(10, Math.ceil(Math.max(...bins.M, ...bins.F) / 50) * 50);
+        const peak = (sex) => {
+            const i = bins[sex].indexOf(Math.max(...bins[sex]));
+            return `${labels[i]} ans (${fmtInt(bins[sex][i])})`;
+        };
+        const med = (sex) => (ages[sex].length ? `${fmtInt(median(ages[sex]))} ans` : '—');
+        setNote('age-summary',
+            `Âge médian : hommes ${med('M')} (n = ${fmtInt(ages.M.length)}), femmes ${med('F')} (n = ${fmtInt(ages.F.length)}). ` +
+            `Classe la plus touchée : hommes ${ages.M.length ? peak('M') : '—'}, femmes ${ages.F.length ? peak('F') : '—'}.`);
 
-        ageHistogramInstance = new Chart(ctx, {
+        const canvas = document.getElementById('age-histogram-chart');
+        if (charts.age) charts.age.destroy();
+        const share = { M: ages.M.length, F: ages.F.length };
+        charts.age = new Chart(canvas.getContext('2d'), {
             type: 'bar',
             data: {
-                labels: labels,
+                labels,
                 datasets: [
-                    { label: 'Hommes', data: maleData, backgroundColor: PALETTE.male, stack: 'stack' },
-                    { label: 'Femmes', data: femaleData, backgroundColor: PALETTE.female, stack: 'stack' }
+                    { label: 'Hommes', data: bins.M.map((n) => -n), backgroundColor: PALETTE.male, borderRadius: 4, borderSkipped: 'start', barPercentage: 0.82, categoryPercentage: 1 },
+                    { label: 'Femmes', data: bins.F, backgroundColor: PALETTE.female, borderRadius: 4, borderSkipped: 'start', barPercentage: 0.82, categoryPercentage: 1 }
                 ]
             },
             options: {
                 indexAxis: 'y',
                 responsive: true,
+                maintainAspectRatio: false,
                 scales: {
-                    x: { stacked: false, ticks: { callback: (value) => Math.abs(value) } },
-                    y: { stacked: true, beginAtZero: true, reverse: true }
+                    x: { stacked: true, min: -limit, max: limit, grid: { color: PALETTE.grid }, border: { display: false }, ticks: { callback: (v) => fmtInt(Math.abs(v)) }, title: { display: true, text: 'Nombre de décès' } },
+                    y: { stacked: true, reverse: true, grid: { display: false }, border: { color: PALETTE.axis }, ticks: { autoSkip: false }, title: { display: true, text: 'Âge au décès (ans)' } }
                 },
                 plugins: {
+                    legend: { position: 'top' },
                     tooltip: {
                         callbacks: {
-                            label: (context) => `${context.dataset.label}: ${Math.abs(context.raw)}`
+                            title: (items) => `${items[0].label} ans`,
+                            label: (c) => {
+                                const sex = c.datasetIndex === 0 ? 'M' : 'F';
+                                const n = Math.abs(c.raw);
+                                return `${c.dataset.label} : ${fmtInt(n)} (${fmtPct((n / share[sex]) * 100)} des ${sex === 'M' ? 'hommes' : 'femmes'})`;
+                            }
                         }
                     }
                 }
             }
         });
-    }
 
-    function generateProfChart(data) {
-        const profCounts = data.reduce((acc, row) => {
-            var profession = row['Profession'] ? row['Profession'].trim() : 'N/C';
-            if (profession && profession !== 'N/C' && profession !== 'Sans état') {
-                if (profession.startsWith('Journalière') || profession.startsWith('Journalier')) profession = 'Journalier.e';
-                if (profession.startsWith('Ouvrière') || profession.startsWith('Ouvrier')) profession = 'Ouvrier.e';
-                if (profession.startsWith('Couturière') || profession.startsWith('Couturier')) profession = 'Couturier.e';
-                if (profession === 'Tailleuse' || profession === 'Tailleur') profession = 'Tailleur.se';
-                if (profession.startsWith("Porteur d'eau") || profession.startsWith("Porteuse d'eau")) profession = "Porteur.se d'eau";
-                if (profession.startsWith('Soldat') || profession.startsWith('Militaire') || profession.startsWith('Infanterie') || profession.startsWith('Fusilier') || profession.startsWith('Caporal') || profession.startsWith('Garde') || profession.startsWith('Dragon') || profession.startsWith('Cavalier') || profession.startsWith('Chasseur') || profession.startsWith('Artilleur') || profession.startsWith('Voltigeur')) profession = 'Militaire';
-                if (profession.startsWith('Marchande') || profession.startsWith('Marchand')) profession = 'Marchand.e';
-                if (profession.startsWith('Agricultrice') || profession.startsWith('Agriculteur')) profession = 'Agriculteur.rice';
-                if (profession.startsWith('Revendeur') || profession.startsWith('Revendeuse')) profession = 'Revendeur.se';
-
-                acc[profession] = (acc[profession] || 0) + 1;
-            }
-            return acc;
-        }, {});
-
-        var sortedProfessions = Object.entries(profCounts)
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 14);
-        sortedProfessions.push(['Autres', Object.values(profCounts).reduce((a, b) => a + b, 0) - sortedProfessions.reduce((a, b) => a + b[1], 0)]);
-        const labels = sortedProfessions.map((entry) => entry[0]);
-        const values = sortedProfessions.map((entry) => entry[1]);
-
-        const ctx = document.getElementById('prof-chart').getContext('2d');
-
-        if (profChartInstance) profChartInstance.destroy();
-
-        profChartInstance = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Top 14 des professions les plus fréquentes',
-                    data: values,
-                    backgroundColor: PALETTE.sequential,
-                    borderColor: '#FFFFFF',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: false,
-                plugins: {
-                    legend: { position: 'top' },
-                    title: { display: false }
-                }
-            }
-        });
+        setTableView('age-histogram-chart', 'age', ['Âge (ans)', 'Hommes', 'Femmes'],
+            labels.map((l, i) => [l, fmtInt(bins.M[i]), fmtInt(bins.F[i])]));
     }
 
     // Revolutionary-era department names -> modern INSEE codes.
@@ -580,157 +681,219 @@
         return null;
     }
 
-    function generateDepartChart(data) {
-        var deptCounts = {};
-        var nonRecognizedDepartments = new Set();
-        data.forEach((row) => {
-            const birthplace = row['Lieu de naissance'];
-            if (!birthplace) return;
+    // ---- Birthplace map: departments of the French Empire (1811) -------------
+    // The register records the department as it was in 1809-1825, so the map is the 1811
+    // empire (130 departments, Belgium, Rhineland, Netherlands and Italy included) instead of
+    // today's France. Geometry comes from Data/empire_1811_departements.json
+    // (built by scripts/build_empire_map.py from the Wikimedia SVG, one path per department).
+    let empireData = null;
+    let empireIndex = null; // normalized name -> { id, name, country, kind }
+    let empirePromise = null;
 
-            const historicalDept = extractHistoricalDeptRaw(birthplace);
-            if (historicalDept) {
-                const modernCode = resolveModernDeptCode(historicalDept);
+    const empireKey = (s) => stripAccents(String(s)).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 
-                if (modernCode) {
-                    deptCounts[modernCode] = (deptCounts[modernCode] || 0) + 1;
-                    if (modernCode === '75') { // Seine -> split into 92/93/94
-                        deptCounts['92'] = (deptCounts['92'] || 0) + 1;
-                        deptCounts['93'] = (deptCounts['93'] || 0) + 1;
-                        deptCounts['94'] = (deptCounts['94'] || 0) + 1;
-                    }
-                    if (modernCode === '78') { // Seine-et-Oise -> split into 91/92/95
-                        deptCounts['91'] = (deptCounts['91'] || 0) + 1;
-                        deptCounts['92'] = (deptCounts['92'] || 0) + 1;
-                        deptCounts['95'] = (deptCounts['95'] || 0) + 1;
-                    }
-                    if (modernCode === 'B11') { // Brabant -> also counts toward Brabant Flamand
-                        deptCounts['B02'] = (deptCounts['B02'] || 0) + 1;
-                    }
-                    if (modernCode === '73') { // Mont-Blanc -> merged into Haute-Savoie
-                        deptCounts['74'] = (deptCounts['74'] || 0) + 1;
-                    }
-                    if (modernCode === '2A') { // Corse -> split into Corse-du-Sud / Haute-Corse
-                        deptCounts['2B'] = (deptCounts['2B'] || 0) + 1;
-                    }
-                } else {
-                    nonRecognizedDepartments.add(historicalDept);
-                }
-            }
+    // Transcription variants, modern names and areas that no longer exist -> 1811 department or state.
+    const EMPIRE_ALIASES = {
+        'dyles': 'dyle', 'rhour': 'roer', 'moers': 'roer', 'nether': 'deux-nethes',
+        'haute-seine': 'seine', 'hauts-de-la-seine': 'seine', 'seine-saint-denis': 'seine', 'val-de-marne': 'seine',
+        'yvelines': 'seine-et-oise', 'essonne': 'seine-et-oise', 'val-d-oise': 'seine-et-oise', 'seine-oise': 'seine-et-oise',
+        'ile-et-vilaine': 'ille-et-vilaine', 'ille-et-villaine': 'ille-et-vilaine', 'ile-et-villaine': 'ille-et-vilaine',
+        'eure-et-loir': 'eure-et-loire', 'cotes-de-nord': 'cotes-du-nord',
+        'loire-interieure': 'loire-inferieure', 'seine-interieure': 'seine-inferieure',
+        'savoie': 'mont-blanc', 'haute-savoie': 'mont-blanc', 'evian': 'leman',
+        'corse': 'golo', 'corse-du-sud': 'golo', 'haute-corse': 'golo',
+        'mont-tonnere': 'mont-tonnerre', 'zuyder-zee': 'zuiderzee', 'bouche-de-l-escaut': 'bouches-de-l-escaut',
+        'wirtembourg': 'wurtemberg', 'wirtemberg': 'wurtemberg', 'duche-de-bergaers': 'berg', 'duche-de-bad': 'bade',
+        'magdebourg': 'westphalie',
+        'canton-de-fribourg': 'suisse', 'canton-de-schafthausen': 'suisse', 'canton-de-neuchatel': 'suisse',
+        'neuchatel': 'suisse', 'helvetie': 'suisse',
+        'silesie': 'prusse', 'pomeranie': 'prusse', 'friesland': 'frise'
+    };
+
+    function buildEmpireIndex() {
+        empireIndex = new Map();
+        const add = (key, entry) => { if (!empireIndex.has(key)) empireIndex.set(key, entry); };
+        empireData.depts.forEach((d) => {
+            const entry = {
+                id: d.group || d.label,
+                name: d.group === 'corse' ? 'Corse' : d.name,
+                country: d.group === 'corse' ? 'France' : d.country,
+                kind: 'dept'
+            };
+            d.entry = entry;
+            add(empireKey(d.label), entry);
+            add(empireKey(d.name), entry);
         });
-        if (nonRecognizedDepartments.size > 0) {
-            console.warn('Départements non reconnus:', Array.from(nonRecognizedDepartments).join(', '));
-        }
-
-        fetch(CONFIG.geoJsonUrl)
-            .then((response) => response.json())
-            .then((geojson) => drawFranceMap(geojson, deptCounts))
-            .catch((error) => {
-                console.error('Erreur lors du chargement de la carte:', error);
-                document.getElementById('france-map').innerHTML =
-                    '<p style="color: var(--pitie-danger);">Erreur lors du chargement de la carte.</p>';
-            });
+        empireData.states.forEach((s) => {
+            s.entry = { id: 'state:' + s.label, name: s.name, country: 'États alliés ou voisins', kind: 'state' };
+            add(empireKey(s.name), s.entry);
+        });
     }
 
-    function drawFranceMap(geojson, deptCounts) {
-        const container = document.getElementById('france-map');
-        container.innerHTML = '';
-        mapTooltip = null; // container was cleared, any previously appended tooltip node is gone with it
-
-        const width = Math.min(container.offsetWidth || 600, 600);
-        const height = 600;
-
-        const svg = d3.select('#france-map')
-            .append('svg')
-            .attr('width', width)
-            .attr('height', height);
-
-        const projection = d3.geoConicConformal()
-            .center([2.454071, 46.279229])
-            .scale(2800)
-            .translate([width / 2, height / 2]);
-
-        const path = d3.geoPath().projection(projection);
-
-        const maxCount = Math.max(...Object.values(deptCounts));
-        // One scale, reused for both the fill and the legend gradient below,
-        // so they can never drift out of sync with each other.
-        const colorScale = d3.scaleSequentialSqrt(d3.interpolateBlues).domain([0, maxCount]);
-
-        if (!mapTooltip) {
-            mapTooltip = document.querySelector('.pitie-app').appendChild(document.createElement('div'));
+    function loadEmpireMap() {
+        if (!empirePromise) {
+            empirePromise = fetch(CONFIG.empireMapUrl)
+                .then((response) => response.json())
+                .then((json) => { empireData = json; buildEmpireIndex(); return json; });
         }
-        const tooltip = d3.select(mapTooltip)
-            .style('position', 'absolute')
-            .style('background', 'white')
-            .style('padding', '8px')
-            .style('border', '1px solid #ccc')
-            .style('border-radius', '4px')
-            .style('pointer-events', 'none')
-            .style('opacity', 0)
-            .style('font-size', '12px')
-            .style('box-shadow', '0 2px 4px rgba(0,0,0,0.2)');
+        return empirePromise;
+    }
 
-        svg.selectAll('path')
-            .data(geojson.features)
-            .enter()
-            .append('path')
-            .attr('d', path)
-            .attr('fill', (d) => {
-                const code = d.properties.code;
-                const count = deptCounts[code] || 0;
-                return count > 0 ? colorScale(count) : PALETTE.mapEmpty;
+    function resolveEmpireEntry(rawDept) {
+        if (!empireIndex || !rawDept) return null;
+        const key = empireKey(rawDept);
+        return empireIndex.get(EMPIRE_ALIASES[key] || key) || null;
+    }
+
+    // Name as it appears on the 1811 map (merges "Seine-inférieure" / "Seine-Inférieure"...).
+    function canonicalDeptName(rawDept) {
+        const entry = resolveEmpireEntry(rawDept);
+        return entry ? entry.name : rawDept;
+    }
+
+    // Class lower bounds: 1 | 2-4 | 5-9 | 10-24 | 25-49 | 50-99 | 100+
+    const BIRTH_BINS = [1, 2, 5, 10, 25, 50, 100];
+    const birthBin = (n) => BIRTH_BINS.reduce((acc, b, i) => (n >= b ? i : acc), -1);
+    const birthBinLabel = (i) => (i === BIRTH_BINS.length - 1 ? `${BIRTH_BINS[i]} et plus`
+        : BIRTH_BINS[i + 1] - 1 === BIRTH_BINS[i] ? `${BIRTH_BINS[i]}` : `${BIRTH_BINS[i]} à ${BIRTH_BINS[i + 1] - 1}`);
+
+    function generateDepartChart(data) {
+        const container = document.getElementById('france-map');
+        loadEmpireMap().then(() => {
+            const counts = new Map(); // id -> { entry, n }
+            const unresolved = new Map();
+            let withPlace = 0;
+            data.forEach((row) => {
+                const raw = extractHistoricalDeptRaw(row['Lieu de naissance']);
+                if (!raw) return;
+                withPlace++;
+                const entry = resolveEmpireEntry(raw);
+                if (!entry) { unresolved.set(raw, (unresolved.get(raw) || 0) + 1); return; }
+                const c = counts.get(entry.id) || { entry, n: 0 };
+                c.n++;
+                counts.set(entry.id, c);
+            });
+            if (unresolved.size > 0) {
+                console.warn('Départements non placés sur la carte:', Array.from(unresolved.entries()).map(([k, v]) => `${k} (${v})`).join(', '));
+            }
+            drawEmpireMap(counts, withPlace, unresolved);
+        }).catch((error) => {
+            console.error('Erreur lors du chargement de la carte:', error);
+            container.innerHTML = '<p style="color: var(--pitie-danger);">Erreur lors du chargement de la carte.</p>';
+        });
+    }
+
+    function drawEmpireMap(counts, withPlace, unresolved) {
+        const wrap = d3.select('#france-map');
+        wrap.html('');
+        const [vx, vy, vw, vh] = empireData.viewBox;
+        const tr = (t) => `translate(${t[0]},${t[1]})`;
+        const countOf = (entry) => (counts.get(entry.id) ? counts.get(entry.id).n : 0);
+        const colorOf = (entry) => {
+            const bin = birthBin(countOf(entry));
+            return bin < 0 ? (entry.kind === 'dept' ? PALETTE.mapEmpty : PALETTE.mapForeign) : PALETTE.sequential[bin];
+        };
+        const located = Array.from(counts.values()).reduce((s, c) => s + c.n, 0);
+
+        const svg = wrap.append('svg')
+            .attr('viewBox', `${vx} ${vy} ${vw} ${vh}`)
+            .attr('role', 'img')
+            .attr('aria-label', `Carte des départements de l'Empire français en 1811, colorée selon le nombre de personnes décédées à la Pitié qui y sont nées. Le détail est dans le tableau sous la carte.`);
+        svg.append('rect').attr('x', vx).attr('y', vy).attr('width', vw).attr('height', vh).attr('fill', PALETTE.sea);
+
+        const tooltip = wrap.append('div').attr('class', 'map-tooltip');
+        const node = wrap.node();
+        const showTip = (event, entry) => {
+            const n = countOf(entry);
+            const where = entry.kind === 'state' ? 'État hors Empire' : (entry.country === 'France' ? 'France actuelle' : entry.country);
+            tooltip.html(`<strong>${escapeHtml(entry.name)}</strong><br>` +
+                `${n ? `${fmtInt(n)} naissance${n > 1 ? 's' : ''} · ${fmtPct((n / located) * 100)}` : 'Aucune naissance connue'}<br>` +
+                `<span class="muted">${escapeHtml(where)}</span>`);
+            const [px, py] = d3.pointer(event, node);
+            tooltip.style('left', px + 14 + 'px').style('top', py + 14 + 'px')
+                .style('transform', px > node.clientWidth * 0.6 ? 'translateX(calc(-100% - 28px))' : 'none')
+                .style('opacity', 1);
+        };
+        const hover = (sel, getEntry) => sel
+            .on('mouseenter', function (event, d) {
+                d3.select(this).raise().attr('stroke', PALETTE.ink).attr('stroke-width', 1.6);
+                showTip(event, getEntry(d));
             })
-            .attr('stroke', PALETTE.mapStroke)
-            .attr('stroke-width', 0.5)
-            .on('mouseover', function (event, d) {
-                const code = d.properties.code;
-                const count = deptCounts[code] || 0;
-                const name = d.properties.nom;
-
-                d3.select(this).attr('stroke-width', 2).attr('stroke', PALETTE.brand);
-
-                tooltip.transition().duration(200).style('opacity', 1);
-                const label = code.startsWith('B') ? `<strong>${name}</strong>` : `<strong>${name} (${code})</strong>`;
-                tooltip.html(`${label}<br/>Naissances: ${count}`)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-            })
-            .on('mouseout', function () {
-                d3.select(this).attr('stroke-width', 0.5).attr('stroke', PALETTE.mapStroke);
-                tooltip.transition().duration(200).style('opacity', 0);
+            .on('mousemove', (event, d) => showTip(event, getEntry(d)))
+            .on('mouseleave', function () {
+                d3.select(this).attr('stroke', PALETTE.mapStroke).attr('stroke-width', 0.7);
+                tooltip.style('opacity', 0);
             });
 
-        const legendWidth = 200;
-        const legendHeight = 20;
-        const legend = svg.append('g')
-            .attr('transform', `translate(${width - legendWidth - 20}, ${height - 60})`);
+        hover(svg.append('g').selectAll('path').data(empireData.states).join('path')
+            .attr('d', (d) => d.d).attr('transform', (d) => tr(d.tr))
+            .attr('fill', (d) => colorOf(d.entry))
+            .attr('stroke', PALETTE.mapStroke).attr('stroke-width', 0.7), (d) => d.entry);
+        // Underlay: a stroke in the fill colour seals the hairline gaps between neighbouring departments.
+        svg.append('g').attr('pointer-events', 'none').selectAll('path').data(empireData.depts).join('path')
+            .attr('d', (d) => d.base || d.d).attr('transform', (d) => tr(d.btr || d.tr))
+            .attr('fill', (d) => colorOf(d.entry)).attr('stroke', (d) => colorOf(d.entry)).attr('stroke-width', 1.8);
+        const deptPaths = hover(svg.append('g').selectAll('path').data(empireData.depts).join('path')
+            .attr('d', (d) => d.d).attr('transform', (d) => tr(d.tr))
+            .attr('fill', (d) => colorOf(d.entry))
+            .attr('stroke', PALETTE.mapStroke).attr('stroke-width', 0.7), (d) => d.entry);
 
-        const legendScale = d3.scaleLinear()
-            .domain([0, maxCount])
-            .range([0, legendWidth]);
+        // Direct label for the biggest department (Seine is too small to find by colour alone).
+        const top = Array.from(counts.values()).sort((a, b) => b.n - a.n)[0];
+        if (top) {
+            const topPath = deptPaths.filter((d) => d.entry.id === top.entry.id).node();
+            if (topPath) {
+                const topDatum = d3.select(topPath).datum();
+                const bb = topPath.getBBox();
+                const cx = bb.x + bb.width / 2 + topDatum.tr[0];
+                const cy = bb.y + bb.height / 2 + topDatum.tr[1];
+                const lx = cx - 70;
+                const ly = cy - 52;
+                svg.append('line').attr('x1', cx).attr('y1', cy).attr('x2', lx + 30).attr('y2', ly + 4).attr('stroke', PALETTE.ink).attr('stroke-width', 1);
+                svg.append('circle').attr('cx', cx).attr('cy', cy).attr('r', 3).attr('fill', 'none').attr('stroke', PALETTE.ink).attr('stroke-width', 1.2);
+                svg.append('text').attr('x', lx + 30).attr('y', ly).attr('text-anchor', 'end')
+                    .attr('font-family', FONT).attr('font-size', 13).attr('font-weight', 600).attr('fill', PALETTE.ink)
+                    .attr('paint-order', 'stroke').attr('stroke', '#fff').attr('stroke-width', 3)
+                    .text(`${top.entry.name} : ${fmtInt(top.n)}`);
+            }
+        }
 
-        const legendAxis = d3.axisBottom(legendScale)
-            .ticks(5)
-            .tickFormat((d) => Math.round(d));
+        // Legend (classes + the two neutral fills)
+        const legend = document.getElementById('empire-legend');
+        legend.innerHTML = PALETTE.sequential.map((c, i) =>
+            `<li><span class="viz-swatch" style="background:${c}"></span>${birthBinLabel(i)}</li>`).join('') +
+            `<li><span class="viz-swatch" style="background:${PALETTE.mapEmpty}; border:1px solid ${PALETTE.axis}"></span>aucune naissance connue</li>` +
+            `<li><span class="viz-swatch" style="background:${PALETTE.mapForeign}"></span>hors Empire</li>`;
 
-        const defs = svg.append('defs');
-        const linearGradient = defs.append('linearGradient').attr('id', 'legend-gradient');
+        // Summary: how much of the register comes from where
+        const sum = (pred) => Array.from(counts.values()).filter(pred).reduce((s, c) => s + c.n, 0);
+        const seine = sum((c) => c.entry.id === 'Seine');
+        const otherFrance = sum((c) => c.entry.kind === 'dept' && c.entry.country === 'France' && c.entry.id !== 'Seine');
+        const annexed = sum((c) => c.entry.kind === 'dept' && c.entry.country !== 'France');
+        const states = sum((c) => c.entry.kind === 'state');
+        const part = (n) => fmtPct(located ? (n / located) * 100 : 0, 0);
+        const unplaced = withPlace - located;
+        setNote('empire-summary',
+            `${fmtInt(located)} lieux de naissance placés sur ${fmtInt(withPlace)} renseignés` +
+            (unplaced > 0 ? ` (${fmtInt(unplaced)} non placés : communes sans département lisible, régions ou pays absents de la carte). ` : '. ') +
+            `Seine (Paris et banlieue) : ${part(seine)} · autres départements de la France actuelle : ${part(otherFrance)} · ` +
+            `départements annexés hors de la France actuelle (Belgique, Rhénanie, Pays-Bas, Italie…) : ${part(annexed)} · États alliés : ${part(states)}.`);
 
-        linearGradient.selectAll('stop')
-            .data(d3.range(0, 1.1, 0.1))
-            .enter()
-            .append('stop')
-            .attr('offset', (d) => `${d * 100}%`)
-            .attr('stop-color', (d) => colorScale(d * maxCount));
+        // Ranking of the best-represented departments (Seine excluded: it would flatten every other bar)
+        const ranked = Array.from(counts.values()).filter((c) => c.entry.id !== 'Seine').sort((a, b) => b.n - a.n);
+        const rankTop = ranked.slice(0, 10);
+        const rankMax = rankTop.length ? rankTop[0].n : 1;
+        document.getElementById('empire-top').innerHTML = rankTop.length
+            ? `<li style="display:block; font-weight:600; color:var(--pitie-chart-ink)">Départements les plus représentés (hors Seine)</li>` +
+              rankTop.map((c) =>
+                `<li><span>${escapeHtml(c.entry.name)}${c.entry.country !== 'France' ? ` <small>(${escapeHtml(c.entry.country)})</small>` : ''}</span>` +
+                `<span><span class="rank-bar" style="display:block; width:${(c.n / rankMax) * 100}%"></span></span>` +
+                `<span class="rank-val">${fmtInt(c.n)} · ${fmtPct((c.n / located) * 100)}</span></li>`).join('')
+            : '';
 
-        legend.append('rect')
-            .attr('width', legendWidth)
-            .attr('height', legendHeight)
-            .style('fill', 'url(#legend-gradient)');
-
-        legend.append('g')
-            .attr('transform', `translate(0, ${legendHeight})`)
-            .call(legendAxis);
+        const all = Array.from(counts.values()).sort((a, b) => b.n - a.n);
+        setTableView('france-map', 'empire', ['Département (1811)', 'Territoire actuel', 'Naissances', 'Part'],
+            all.map((c) => [c.entry.name, c.entry.kind === 'state' ? 'État hors Empire' : c.entry.country, fmtInt(c.n), fmtPct((c.n / located) * 100)]));
     }
 
     // ---- Domicile / Paris streets -------------------------------------------
@@ -854,14 +1017,17 @@
         }
 
         if (summaryEl) {
+            const considered = matchedCount + outsideParisCount + unmatchedCount;
             summaryEl.textContent =
-                `${matchedCount.toLocaleString('fr-FR')} domiciles localisés · ` +
-                `${outsideParisCount.toLocaleString('fr-FR')} hors Paris · ` +
-                `${unmatchedCount.toLocaleString('fr-FR')} non reconnus`;
+                `${fmtInt(matchedCount)} domiciles rattachés à un quartier (${fmtPct(considered ? (matchedCount / considered) * 100 : 0, 0)} des adresses lisibles) · ` +
+                `${fmtInt(outsideParisCount)} hors Paris · ` +
+                `${fmtInt(unmatchedCount)} rues non reconnues (absentes des sources Lazare/Perrot ou mal orthographiées). ` +
+                'Seuls les quartiers de la liste sont comptés : un biais possible vers les rues les mieux documentées.';
         }
 
         if (matchedCount > 0) {
             drawQuartierChart(quartierCounts);
+            drawQuartierMap(Array.from(streetPoints.values()));
             drawParisStreetMap(Array.from(streetPoints.values()));
         }
     }
@@ -879,26 +1045,124 @@
             values.push(quartierCounts[quart] || 0);
         });
 
-        const ctx = document.getElementById('domicile-arr-chart').getContext('2d');
-        if (domicileChartInstance) domicileChartInstance.destroy();
-
-        domicileChartInstance = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Domiciles par quartier (1811-1849)',
-                    data: values,
-                    backgroundColor: PALETTE.brand
-                }]
-            },
-            options: {
-                indexAxis: 'y',
-                responsive: false,
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true } }
-            }
+        const total = values.reduce((sum, v) => sum + v, 0);
+        const biggest = new Set(values.map((v, i) => [v, i]).sort((x, y) => y[0] - x[0]).slice(0, 5).map(([, i]) => i));
+        drawRankedBars('quartiers', 'domicile-arr-chart', labels.map((l, i) => [l, values[i]]), {
+            total,
+            unit: 'domiciles',
+            labelFormat: (v, i) => (biggest.has(i) && v > 0 ? `${fmtInt(v)} · ${fmtPct((v / total) * 100)}` : '')
         });
+        setTableView('domicile-arr-chart', 'quartiers', ['Quartier', 'Domiciles', 'Part'],
+            labels.map((l, i) => [l, fmtInt(values[i]), fmtPct(total ? (values[i] / total) * 100 : 0)]));
+    }
+
+    // ---- Quartier choropleth ---------------------------------------------------
+    // Modern quartiers administratifs (80, Ville de Paris open data) rather than the 48 quartiers of
+    // 1811-1849: each geolocated street is placed in the modern quartier that contains it.
+    const QUARTIER_BINS = [1, 5, 10, 25, 50, 100, 200];
+    let quartierMap = null;
+    let quartierGeo = null;
+    let quartierPending = null;
+
+    function ringContains(ring, x, y) {
+        let inside = false;
+        for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+            const [xi, yi] = ring[i];
+            const [xj, yj] = ring[j];
+            if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+    }
+
+    function featureContains(feature, x, y) {
+        const g = feature.geometry;
+        const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+        return polys.some((poly) => ringContains(poly[0], x, y) && !poly.slice(1).some((hole) => ringContains(hole, x, y)));
+    }
+
+    function quartierFeatures(points) {
+        const counts = new Map();
+        let outside = 0;
+        let approx = 0;
+        points.forEach((p) => {
+            if (p.geoSource === 'quartier') { approx += p.count; return; }
+            const hit = quartierGeo.features.find((f) => featureContains(f, p.lon, p.lat));
+            if (hit) counts.set(hit.properties.c_qu, (counts.get(hit.properties.c_qu) || 0) + p.count);
+            else outside += p.count;
+        });
+        const total = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+        setNote('quartier-map-note',
+            `${fmtInt(total)} domiciles placés dans un quartier actuel d'après la position précise de leur rue ` +
+            `(${fmtInt(approx)} adresses à position approximative et ${fmtInt(outside)} hors des limites actuelles de Paris ne sont pas comptées).`);
+        return {
+            type: 'FeatureCollection',
+            features: quartierGeo.features.map((f) => {
+                const n = counts.get(f.properties.c_qu) || 0;
+                return Object.assign({}, f, {
+                    properties: { nom: f.properties.l_qu, arr: f.properties.c_ar, count: n, share: total ? (n / total) * 100 : 0 }
+                });
+            })
+        };
+    }
+
+    function drawQuartierMap(points) {
+        quartierPending = points;
+        const render = () => {
+            const data = quartierFeatures(quartierPending);
+            if (quartierMap.getSource('quartiers')) {
+                quartierMap.getSource('quartiers').setData(data);
+                return;
+            }
+            const fill = ['step', ['get', 'count'], PALETTE.mapEmpty];
+            QUARTIER_BINS.forEach((b, i) => fill.push(b, PALETTE.sequential[i]));
+            quartierMap.addSource('quartiers', { type: 'geojson', data });
+            quartierMap.addLayer({ id: 'quartiers-fill', type: 'fill', source: 'quartiers', paint: { 'fill-color': fill, 'fill-opacity': 0.85 } });
+            quartierMap.addLayer({ id: 'quartiers-line', type: 'line', source: 'quartiers', paint: { 'line-color': '#fff', 'line-width': 1 } });
+            let popup = null;
+            quartierMap.on('mousemove', 'quartiers-fill', (e) => {
+                quartierMap.getCanvas().style.cursor = 'pointer';
+                const p = e.features[0].properties;
+                if (popup) popup.remove();
+                popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, maxWidth: '260px' })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<strong>${escapeHtml(p.nom)}</strong> (${escapeHtml(p.arr + (Number(p.arr) === 1 ? 'er' : 'e'))} arr.)<br>${fmtInt(p.count)} domicile${p.count > 1 ? 's' : ''} · ${fmtPct(Number(p.share))}`)
+                    .addTo(quartierMap);
+            });
+            quartierMap.on('mouseleave', 'quartiers-fill', () => {
+                quartierMap.getCanvas().style.cursor = '';
+                if (popup) { popup.remove(); popup = null; }
+            });
+        };
+
+        if (quartierMap) {
+            if (quartierMap.isStyleLoaded() && quartierGeo) render();
+            return;
+        }
+        document.getElementById('quartier-legend').innerHTML =
+            `<li><span class="viz-swatch" style="background:${PALETTE.mapEmpty}; border:1px solid ${PALETTE.axis}"></span>aucun</li>` +
+            PALETTE.sequential.map((c, i) => {
+                const label = i === QUARTIER_BINS.length - 1 ? `${QUARTIER_BINS[i]} et plus` : `${QUARTIER_BINS[i]} à ${QUARTIER_BINS[i + 1] - 1}`;
+                return `<li><span class="viz-swatch" style="background:${c}"></span>${i === 0 ? '1 à 4' : label}</li>`;
+            }).join('');
+        quartierMap = new maplibregl.Map({
+            container: 'quartier-map',
+            style: {
+                version: 8,
+                sources: { osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' } },
+                layers: [
+                    { id: 'bg', type: 'background', paint: { 'background-color': '#fafaf8' } },
+                    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': -1, 'raster-opacity': 0.4 } }
+                ]
+            },
+            center: [2.345, 48.858],
+            zoom: 11.2
+        });
+        quartierMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+        Promise.all([
+            fetch(CONFIG.quartierGeoUrl).then((r) => r.json()),
+            new Promise((resolve) => quartierMap.on('load', resolve))
+        ]).then(([geo]) => { quartierGeo = geo; render(); })
+          .catch((error) => console.error('Erreur carte des quartiers:', error));
     }
 
     function escapeHtml(str) {
@@ -927,6 +1191,11 @@
     // instance whose 'load' event fires against a container that's been wiped).
     let parisMapPendingPoints = null;
 
+    // Circle area (not radius) is proportional to the number of deaths.
+    function circleRadiusExpr(maxCount) {
+        return ['interpolate', ['linear'], ['sqrt', ['get', 'count']], 1, 3, Math.max(2, Math.sqrt(maxCount)), 20];
+    }
+
     // Real OSM-tiled map (MapLibre GL), same approach as rues-paris.html in
     // the companion genealogy tool — a plain D3 scatter on a blank background
     // gave no sense of *where* in Paris these points actually are.
@@ -942,9 +1211,7 @@
             }
             src.setData(pointsToGeoJSON(points));
             const maxCount = points.length ? Math.max(...points.map((p) => p.count)) : 1;
-            parisMapInstance.setPaintProperty('domiciles-point', 'circle-radius', [
-                'interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18
-            ]);
+            parisMapInstance.setPaintProperty('domiciles-point', 'circle-radius', circleRadiusExpr(maxCount));
             return;
         }
 
@@ -967,7 +1234,11 @@
                         attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
                     }
                 },
-                layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+                // Desaturated, faded basemap: the data layer has to stand out, not the street map.
+                layers: [
+                    { id: 'bg', type: 'background', paint: { 'background-color': '#fafaf8' } },
+                    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': -1, 'raster-opacity': 0.5 } }
+                ]
             },
             center: [2.3488, 48.8534],
             zoom: 11
@@ -985,9 +1256,9 @@
                 type: 'circle',
                 source: 'domiciles',
                 paint: {
-                    'circle-radius': ['interpolate', ['linear'], ['get', 'count'], 1, 3, maxCount, 18],
-                    'circle-color': ['match', ['get', 'geoSource'], 'quartier', '#e67e22', PALETTE.brand],
-                    'circle-opacity': ['match', ['get', 'geoSource'], 'quartier', 0.5, 0.75],
+                    'circle-radius': circleRadiusExpr(maxCount),
+                    'circle-color': ['match', ['get', 'geoSource'], 'quartier', PALETTE.s2, PALETTE.s1],
+                    'circle-opacity': ['match', ['get', 'geoSource'], 'quartier', 0.55, 0.8],
                     'circle-stroke-color': '#fff',
                     'circle-stroke-width': 1
                 }
@@ -1010,6 +1281,22 @@
                 if (popup) { popup.remove(); popup = null; }
             });
         });
+    }
+
+    // Quartier choropleth <-> street dots, in one card
+    function setParisView(view) {
+        document.querySelectorAll('.pitie-app [data-paris-view]').forEach((b) => {
+            const on = b.dataset.parisView === view;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-pressed', String(on));
+        });
+        document.querySelectorAll('.pitie-app [data-paris-pane]').forEach((p) => { p.hidden = p.dataset.parisPane !== view; });
+        document.getElementById('quartier-map').classList.toggle('is-off', view !== 'quartier');
+        document.getElementById('domicile-map').classList.toggle('is-off', view !== 'rues');
+        document.getElementById('quartier-legend').hidden = view !== 'quartier';
+        document.getElementById('rues-legend').hidden = view !== 'rues';
+        const map = view === 'quartier' ? quartierMap : parisMapInstance;
+        if (map) map.resize();
     }
 
     // ---- Search -------------------------------------------------------------
@@ -1353,7 +1640,8 @@
     }
 
     function extractDepartmentAdvanced(val) {
-        return extractHistoricalDeptRaw(val) || 'Inconnu';
+        const raw = extractHistoricalDeptRaw(val);
+        return raw ? canonicalDeptName(raw) : 'Inconnu';
     }
 
     function calculateSmartMax(matrix) {
@@ -1403,20 +1691,11 @@
             let parts = dateStr ? dateStr.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/) : null;
             let date = parts ? new Date(parts[3], parts[2] - 1, parts[1]) : null;
 
-            let ageStr = getValueAdvanced(d, ['Âge', 'Age', 'age']);
-            let age = null;
-            if (ageStr) {
-                let s = ageStr.toString().toLowerCase().replace(',', '.');
-                let val = parseFloat(s.match(/[\d\.]+/));
-                if (!isNaN(val)) {
-                    if (s.includes('mois')) age = val / 12;
-                    else if (s.includes('jour')) age = 0;
-                    else age = val;
-                }
-            }
+            let age = parseAge(getValueAdvanced(d, ['Âge', 'Age', 'age']));
 
-            let sexeStr = getValueAdvanced(d, ['Sexe']);
-            let sexe = (sexeStr && sexeStr.toLowerCase().startsWith('f')) ? 'F' : 'M';
+            // Missing / unreadable sex stays null: it must not be counted as a man.
+            let sexeStr = (getValueAdvanced(d, ['Sexe']) || '').trim().toLowerCase();
+            let sexe = sexeStr.startsWith('f') ? 'F' : (sexeStr.startsWith('m') ? 'M' : null);
 
             let causeStr = getValueAdvanced(d, ['Cause de mort: espèce', 'Cause', 'Maladie', 'Observations', 'Genre de mort']);
 
@@ -1427,7 +1706,7 @@
                 age: age,
                 sexe: sexe,
                 job_cat: categorizeAdvanced(getValueAdvanced(d, ['Profession', 'Metier']), jobTaxonomy, 'Autres'),
-                cause_cat: categorizeAdvanced(causeStr, causeTaxonomy, 'Autres'),
+                cause_cat: (causeStr && causeStr.trim().length >= 3) ? categorizeAdvanced(causeStr, causeTaxonomy, 'Autres') : 'Non précisé',
                 cause_raw: causeStr,
                 departement: extractDepartmentAdvanced(getValueAdvanced(d, ['Lieu de naissance', 'Commune de naissance'])),
                 p_defunt: cleanPrenoms(getValueAdvanced(d, ['Prénoms', 'Prenoms', 'Prénom'])),
@@ -1436,7 +1715,7 @@
         }).filter((d) => d.date != null && d.year >= CONFIG.dataYearRange[0] && d.year <= CONFIG.dataYearRange[1]);
 
         const statusEl = document.getElementById('advanced-stats-status');
-        statusEl.textContent = `✅ Statistiques avancées chargées (${ADVANCED_DATA.length} entrées analysées)`;
+        statusEl.textContent = `✅ Statistiques avancées chargées (${ADVANCED_DATA.length} entrées analysées${filteredData.length < dbData.length ? ', filtres appliqués' : ''})`;
         statusEl.classList.remove('status-error');
         statusEl.classList.add('status-ok');
 
@@ -1451,14 +1730,21 @@
         renderCauseViolinPlot();
         renderNamesPercent();
 
+        const firstLoad = !advancedStatsLoaded;
         advancedStatsLoaded = true;
 
-        document.getElementById('advanced-stats').scrollIntoView({ behavior: 'smooth' });
+        if (firstLoad) document.getElementById('advanced-stats').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // The filters above scope the advanced charts too (one filter row for every chart on the page).
+    function refreshAdvancedStats() {
+        if (advancedStatsLoaded) processAdvancedData(filteredData);
     }
 
     function populateCauseDropdown() {
         let counts = _.countBy(ADVANCED_DATA, 'cause_cat');
         let sel = document.getElementById('causeSelect');
+        const previous = sel.value;
         sel.innerHTML = '<option value="All">Toutes les causes</option>';
         Object.entries(counts).sort((a, b) => b[1] - a[1]).forEach(([cause, count]) => {
             let opt = document.createElement('option');
@@ -1466,218 +1752,251 @@
             opt.text = `${cause} (${count})`;
             sel.add(opt);
         });
+        if (previous && Array.from(sel.options).some((o) => o.value === previous)) sel.value = previous;
+    }
+
+    // Years complete enough to be compared (see MIN_YEAR_ENTRIES), plus the ones left out.
+    function yearCoverage() {
+        const totals = _.countBy(ADVANCED_DATA, 'year');
+        const all = Object.keys(totals).map(Number).sort((a, b) => a - b);
+        return {
+            totals,
+            years: all.filter((y) => totals[y] >= MIN_YEAR_ENTRIES),
+            thin: all.filter((y) => totals[y] < MIN_YEAR_ENTRIES)
+        };
     }
 
     function updateHeatmap() {
         if (ADVANCED_DATA.length === 0) return;
 
-        let selectedCause = document.getElementById('causeSelect').value;
-        let filteredAdvData = (selectedCause === 'All')
-            ? ADVANCED_DATA
-            : ADVANCED_DATA.filter((d) => d.cause_cat === selectedCause);
+        const selectedCause = document.getElementById('causeSelect').value;
+        const rows = (selectedCause === 'All') ? ADVANCED_DATA : ADVANCED_DATA.filter((d) => d.cause_cat === selectedCause);
+        const { years, thin, totals } = yearCoverage();
 
-        let years = _.uniq(ADVANCED_DATA.map((d) => d.year)).sort();
-        let monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-        let z = Array(12).fill(0).map(() => Array(years.length).fill(0));
-
-        filteredAdvData.forEach((d) => {
-            let yIdx = years.indexOf(d.year);
-            if (yIdx > -1 && d.month !== null) z[d.month][yIdx]++;
+        const z = MONTH_NAMES.map(() => Array(years.length).fill(0));
+        rows.forEach((d) => {
+            const x = years.indexOf(d.year);
+            if (x > -1 && d.month !== null) z[d.month][x]++;
         });
+        const text = z.map((r) => r.map((v) => (v ? String(v) : '')));
+        const zmax = Math.max(1, ...z.flat());
 
-        let smartMax = calculateSmartMax(z);
+        setNote('heatmap-note',
+            `${selectedCause === 'All' ? 'Toutes causes' : selectedCause} : ${fmtInt(rows.length)} décès sur ${years.length} années. ` +
+            (thin.length ? `Années écartées car trop peu de relevés indexés (moins de ${MIN_YEAR_ENTRIES}) : ${thin.map((y) => `${y} (${totals[y]})`).join(', ')}. ` : '') +
+            'Une case très claire peut venir d\'un registre pas encore indexé plutôt que d\'une absence de décès.');
 
         Plotly.react('chart-heatmap-deaths', [{
-            x: years, y: monthNames, z: z, type: 'heatmap',
-            colorscale: 'Reds', zmin: 0, zmax: smartMax,
-            colorbar: { title: 'Décès' }
-        }], {
-            title: `Intensité des Décès : ${selectedCause}`,
-            margin: { t: 50, l: 60 },
-            xaxis: { type: 'category', tickmode: 'array', tickvals: years, ticktext: years.map(String) }
-        });
+            x: years.map(String), y: MONTH_NAMES, z, text, type: 'heatmap',
+            colorscale: sequentialColorscale(), zmin: 0, zmax,
+            xgap: 2, ygap: 2,
+            texttemplate: '%{text}', textfont: { size: 10 },
+            hovertemplate: '%{y} %{x} : %{z} décès<extra></extra>',
+            colorbar: { title: { text: 'Décès / mois' }, thickness: 12, outlinewidth: 0 }
+        }], plotlyLayout({
+            height: 460,
+            margin: { t: 8, l: 48 },
+            xaxis: { type: 'category', showgrid: false },
+            yaxis: { autorange: 'reversed', showgrid: false, fixedrange: true }
+        }), PLOTLY_CONFIG);
     }
 
     function renderSeasonality() {
-        let years = _.uniq(ADVANCED_DATA.map((d) => d.year)).sort();
-        let monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-        let stats = [];
+        const { years, totals } = yearCoverage();
+        if (years.length < 2) return;
 
-        let yearCounts = _.countBy(ADVANCED_DATA, 'year');
-        let peakYear = Object.entries(yearCounts).sort((a, b) => b[1] - a[1])[0];
-        let peakYearNum = peakYear ? parseInt(peakYear[0], 10) : years[0];
+        const peakYear = years.reduce((best, y) => (totals[y] > totals[best] ? y : best), years[0]);
+        const byMonth = (y) => MONTH_NAMES.map((_, m) => ADVANCED_DATA.filter((d) => d.year === y && d.month === m).length);
+        const baseline = years.filter((y) => y !== peakYear).map(byMonth);
+        const peak = byMonth(peakYear);
+        const stats = MONTH_NAMES.map((month, m) => {
+            const counts = baseline.map((r) => r[m]);
+            return { month, mean: math.mean(counts), std: math.std(counts), peak: peak[m] };
+        });
 
-        for (let m = 0; m < 12; m++) {
-            let counts = years.filter((y) => y !== peakYearNum).map((y) => ADVANCED_DATA.filter((d) => d.year === y && d.month === m).length);
-            let countPeak = ADVANCED_DATA.filter((d) => d.year === peakYearNum && d.month === m).length;
-            if (counts.length > 0) {
-                stats.push({ month: monthNames[m], mean: math.mean(counts), std: math.std(counts), valPeak: countPeak });
-            }
-        }
+        document.getElementById('saison-title').textContent = `Saisonnalité : ${peakYear} contre les autres années`;
+        setNote('saison-note',
+            `${peakYear} est l'année la plus chargée (${fmtInt(totals[peakYear])} décès). Moyenne et écart-type calculés sur les ${baseline.length} autres années ` +
+            `comptant au moins ${MIN_YEAR_ENTRIES} relevés. Un mois sans aucun relevé en ${peakYear} n'est pas tracé : c'est probablement un registre manquant.`);
 
-        if (stats.length === 0) return;
-
+        const x = stats.map((s) => s.month);
+        const peakIdx = stats.reduce((best, s, i) => (s.peak > stats[best].peak ? i : best), 0);
         Plotly.newPlot('chart-saison', [
-            { x: stats.map((s) => s.month), y: stats.map((s) => s.mean), type: 'scatter', mode: 'lines', name: `Moyenne (Hors ${peakYearNum})`, line: { color: PALETTE.meanLine, width: 4 } },
-            { x: stats.map((s) => s.month), y: stats.map((s) => s.mean + s.std), type: 'scatter', mode: 'lines', showlegend: false, line: { width: 0 } },
-            { x: stats.map((s) => s.month), y: stats.map((s) => s.mean - s.std), type: 'scatter', mode: 'lines', name: 'Zone Normale (±1σ)', fill: 'tonexty', fillcolor: PALETTE.bandFill, line: { width: 0 } },
-            { x: stats.map((s) => s.month), y: stats.map((s) => s.valPeak), type: 'scatter', mode: 'markers+lines', name: `Année ${peakYearNum}`, line: { color: PALETTE.peakLine, dash: 'dot' } }
-        ], { title: `Saisonnalité & Comparaison avec ${peakYearNum}`, margin: { t: 50 } });
+            { x, y: stats.map((s) => s.mean + s.std), type: 'scatter', mode: 'lines', showlegend: false, hoverinfo: 'skip', line: { width: 0 } },
+            { x, y: stats.map((s) => Math.max(0, s.mean - s.std)), type: 'scatter', mode: 'lines', name: 'Moyenne ± 1 écart-type', fill: 'tonexty', fillcolor: PALETTE.bandFill, hoverinfo: 'skip', line: { width: 0 } },
+            { x, y: stats.map((s) => s.mean), type: 'scatter', mode: 'lines', name: `Moyenne hors ${peakYear}`, line: { color: PALETTE.s1, width: 3 }, hovertemplate: '%{x} : %{y:.0f} décès en moyenne<extra></extra>' },
+            { x, y: stats.map((s) => (s.peak > 0 ? s.peak : null)), type: 'scatter', mode: 'lines+markers', name: String(peakYear), connectgaps: false, line: { color: PALETTE.s2, width: 3 }, marker: { size: 8, color: PALETTE.s2, line: { color: '#fff', width: 2 } }, hovertemplate: '%{x} ' + peakYear + ' : %{y} décès<extra></extra>' }
+        ], plotlyLayout({
+            height: 460,
+            margin: { t: 24 },
+            yaxis: { title: { text: 'Décès par mois' }, rangemode: 'tozero' },
+            xaxis: { fixedrange: true },
+            legend: { orientation: 'h', y: -0.14, x: 0.5, xanchor: 'center' },
+            annotations: [{
+                x: MONTH_NAMES[peakIdx], y: stats[peakIdx].peak, xref: 'x', yref: 'y',
+                text: `${MONTH_NAMES[peakIdx]} ${peakYear} : ${stats[peakIdx].peak}`,
+                showarrow: true, arrowcolor: PALETTE.ink2, ax: 56, ay: 4,
+                font: { size: 12, color: PALETTE.ink }
+            }]
+        }), PLOTLY_CONFIG);
     }
 
     function renderRegionJobs() {
-        let topDepts = Object.entries(_.countBy(ADVANCED_DATA, 'departement'))
-            .filter((x) => x[0] !== 'Inconnu' && x[0] !== '75' && x[0] !== 'Seine')
+        const known = ADVANCED_DATA.filter((d) => d.job_cat && d.job_cat !== 'Sans état' && d.departement !== 'Inconnu');
+        const topDepts = Object.entries(_.countBy(known.filter((d) => d.departement !== 'Seine'), 'departement'))
             .sort((a, b) => b[1] - a[1]).slice(0, 15).map((x) => x[0]);
+        if (topDepts.length === 0) return;
 
-        let jobCounts = _.countBy(ADVANCED_DATA.filter((d) => d.job_cat && d.job_cat !== 'Sans état'), 'job_cat');
-        let taxos = Object.entries(jobCounts).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
+        const jobCounts = _.countBy(known, 'job_cat');
+        const jobs = Object.keys(jobCounts)
+            .filter((j) => j !== 'Autres')
+            .sort((a, b) => jobCounts[b] - jobCounts[a])
+            .concat(jobCounts['Autres'] ? ['Autres'] : []);
 
-        let z = taxos.map(() => Array(topDepts.length).fill(0));
-
-        ADVANCED_DATA.forEach((d) => {
-            let xIdx = topDepts.indexOf(d.departement);
-            let yIdx = taxos.indexOf(d.job_cat);
-            if (xIdx > -1 && yIdx > -1) z[yIdx][xIdx]++;
+        const n = topDepts.map((dept) => known.filter((d) => d.departement === dept).length);
+        const counts = jobs.map(() => Array(topDepts.length).fill(0));
+        known.forEach((d) => {
+            const x = topDepts.indexOf(d.departement);
+            const y = jobs.indexOf(d.job_cat);
+            if (x > -1 && y > -1) counts[y][x]++;
         });
+        const z = counts.map((row) => row.map((v, x) => (n[x] ? (v / n[x]) * 100 : 0)));
+        const text = z.map((row) => row.map((v) => (v >= 5 ? String(Math.round(v)) : '')));
 
-        let taxosReversed = [...taxos].reverse();
-        let zReversed = [...z].reverse();
+        setNote('jobs-note',
+            'Pour 100 défunts nés dans un département, part de chaque catégorie de métier (les colonnes totalisent 100 %). ' +
+            'Seine exclue ; 15 départements les plus représentés ; « sans état » exclu. Les nombres affichés sont des pourcentages ≥ 5 %.');
 
-        Plotly.newPlot('chart-heatmap-jobs', [{
-            x: topDepts, y: taxosReversed, z: zReversed, type: 'heatmap',
-            colorscale: 'Viridis', zmin: 0, zmax: calculateSmartMax(z)
-        }], { title: 'Origine Provinciale des Métiers', margin: { l: 120, t: 50 } });
+        Plotly.react('chart-heatmap-jobs', [{
+            x: topDepts.map((dept, i) => `${dept} (n = ${n[i]})`), y: jobs, z, text, customdata: counts, type: 'heatmap',
+            colorscale: sequentialColorscale(), zmin: 0, zmax: Math.max(...z.flat()),
+            xgap: 2, ygap: 2, texttemplate: '%{text}', textfont: { size: 10 },
+            hovertemplate: '%{y} parmi les nés en %{x}<br>%{z:.1f} % (%{customdata} défunts)<extra></extra>',
+            colorbar: { title: { text: '% du département' }, thickness: 12, outlinewidth: 0, ticksuffix: ' %' }
+        }], plotlyLayout({
+            height: 640,
+            margin: { t: 8, l: 100, b: 130 },
+            xaxis: { tickangle: -40, showgrid: false },
+            yaxis: { autorange: 'reversed', showgrid: false }
+        }), PLOTLY_CONFIG);
     }
 
-    function buildViolinTraces(groups, colors) {
-        return groups.map(([label, ages], index) => ({
-            type: 'violin',
-            x: ages,
-            y: Array(ages.length).fill(label),
-            name: `${label} (n=${ages.length})`,
-            orientation: 'h',
-            side: 'positive',
-            box: { visible: true },
-            meanline: { visible: true },
-            line: { color: colors[index % colors.length] },
-            fillcolor: colors[index % colors.length],
-            opacity: 0.7,
-            points: false,
-            scalemode: 'width',
-            width: 0.8,
-            hovertemplate: `<b>${label}</b><br>` +
-                `Effectif: ${ages.length} personnes<br>` +
-                `Âge moyen: ${(ages.reduce((a, b) => a + b, 0) / ages.length).toFixed(1)} ans<br>` +
-                '<extra></extra>'
-        }));
+    // One violin per group, a single hue (the group is already named on the axis), ordered by median age.
+    function buildViolinTraces(groups) {
+        return groups.map(([label, ages]) => {
+            const name = `${label} (n = ${ages.length})`;
+            const mean = ages.reduce((a, b) => a + b, 0) / ages.length;
+            return {
+                type: 'violin',
+                x: ages,
+                y: Array(ages.length).fill(name),
+                name,
+                orientation: 'h',
+                side: 'positive',
+                width: 0.9,
+                spanmode: 'hard',
+                points: false,
+                box: { visible: true, width: 0.18, fillcolor: '#fff', line: { color: PALETTE.ink, width: 1.5 } },
+                meanline: { visible: false },
+                line: { color: PALETTE.s1, width: 1 },
+                fillcolor: 'rgba(42, 120, 214, 0.55)',
+                hovertemplate: `<b>${label}</b><br>Effectif : ${ages.length}<br>Âge médian : ${median(ages).toFixed(0)} ans<br>Âge moyen : ${mean.toFixed(1)} ans<extra></extra>`
+            };
+        });
+    }
+
+    function renderViolins(divId, noteId, byGroup, minCount, maxGroups, xRange, noteText) {
+        const groups = Object.entries(byGroup)
+            .filter(([, ages]) => ages.length >= minCount)
+            .sort((a, b) => b[1].length - a[1].length)
+            .slice(0, maxGroups)
+            .sort((a, b) => median(a[1]) - median(b[1])); // youngest at the bottom, oldest on top
+        if (groups.length === 0) return;
+
+        setNote(noteId, noteText.replace('{n}', groups.length));
+        const traces = buildViolinTraces(groups);
+        Plotly.react(divId, traces, plotlyLayout({
+            height: 90 + groups.length * 46,
+            margin: { t: 8, l: 190, r: 16, b: 56 },
+            xaxis: { title: { text: 'Âge au décès (années)' }, zeroline: false, range: xRange, dtick: 10 },
+            yaxis: { title: '', categoryorder: 'array', categoryarray: traces.map((t) => t.name), showgrid: false },
+            showlegend: false,
+            violinmode: 'overlay'
+        }), PLOTLY_CONFIG);
     }
 
     function renderLifeExpectancy() {
-        let jobsData = {};
+        const byJob = {};
         ADVANCED_DATA.forEach((d) => {
             if (d.age !== null && d.age > 10 && d.job_cat && d.job_cat !== 'Sans état') {
-                (jobsData[d.job_cat] = jobsData[d.job_cat] || []).push(d.age);
+                (byJob[d.job_cat] = byJob[d.job_cat] || []).push(d.age);
             }
         });
-
-        let sortedJobs = Object.entries(jobsData)
-            .filter(([, ages]) => ages.length >= 5)
-            .sort((a, b) => b[1].length - a[1].length)
-            .slice(0, 15);
-
-        if (sortedJobs.length === 0) return;
-
-        let categoryOrder = sortedJobs.map(([job]) => job).reverse();
-        let traces = buildViolinTraces(sortedJobs, PALETTE.categorical);
-
-        Plotly.newPlot('chart-life-expectancy', traces, {
-            title: "Distribution de l'âge au décès par métier (>10 ans)",
-            xaxis: { title: 'Âge (années)', zeroline: false, range: [10, 100] },
-            yaxis: { title: '', categoryorder: 'array', categoryarray: categoryOrder },
-            showlegend: false,
-            margin: { l: 120, t: 50, r: 20, b: 50 }
-        });
+        renderViolins('chart-life-expectancy', 'life-note', byJob, 5, 15, [10, 100],
+            'Âge au décès des plus de 10 ans, pour les {n} catégories de métier les plus fréquentes, de la plus jeune (bas) à la plus âgée (haut). ' +
+            'La largeur indique où se concentrent les décès ; le trait noir marque la médiane et l\'étendue interquartile.');
     }
 
     function renderCauseViolinPlot() {
-        let causesData = {};
+        const byCause = {};
         ADVANCED_DATA.forEach((d) => {
-            if (d.age !== null && d.age >= 0 && d.cause_cat && d.cause_cat !== 'Non précisé') {
-                (causesData[d.cause_cat] = causesData[d.cause_cat] || []).push(d.age);
+            if (d.age !== null && d.cause_cat && d.cause_cat !== 'Non précisé') {
+                (byCause[d.cause_cat] = byCause[d.cause_cat] || []).push(d.age);
             }
         });
-
-        let sortedCauses = Object.entries(causesData)
-            .filter(([, ages]) => ages.length >= 10)
-            .sort((a, b) => b[1].length - a[1].length)
-            .slice(0, 12);
-
-        if (sortedCauses.length === 0) return;
-
-        let categoryOrder = sortedCauses.map(([cause]) => cause).reverse();
-        let traces = buildViolinTraces(sortedCauses, PALETTE.categorical);
-
-        Plotly.newPlot('chart-cause-violin', traces, {
-            title: "Distribution de l'âge au décès selon la cause",
-            xaxis: { title: 'Âge au décès (années)', zeroline: false, range: [0, 100] },
-            yaxis: { title: '', categoryorder: 'array', categoryarray: categoryOrder },
-            showlegend: false,
-            margin: { t: 50, b: 50, l: 150, r: 20 }
-        });
+        renderViolins('chart-cause-violin', 'cause-violin-note', byCause, 10, 12, [0, 100],
+            'Âge au décès pour les {n} grandes familles de causes (regroupement par mots-clés), de la plus jeune (bas) à la plus âgée (haut). ' +
+            'Boîte : médiane et quartiles ; forme : répartition des âges.');
     }
 
+    // Share of the people of each sex that carry each first name (deceased + spouses).
     function renderNamesPercent() {
-        let namesM = [[], [], []];
-        let namesF = [[], [], []];
-        let totalMen = 0;
-        let totalWomen = 0;
-
+        const names = { M: [[], [], []], F: [[], [], []] };
+        const base = { M: 0, F: 0 };
+        const add = (sex, list) => {
+            if (!list.some(Boolean)) return;
+            base[sex]++;
+            list.forEach((n, i) => { if (n) names[sex][i].push(n); });
+        };
         ADVANCED_DATA.forEach((d) => {
-            if (d.sexe === 'M') {
-                totalMen++;
-                [0, 1, 2].forEach((i) => { if (d.p_defunt[i]) namesM[i].push(d.p_defunt[i]); });
-                [0, 1, 2].forEach((i) => { if (d.p_conjoint[i]) namesF[i].push(d.p_conjoint[i]); });
-            } else {
-                totalWomen++;
-                [0, 1, 2].forEach((i) => { if (d.p_defunt[i]) namesF[i].push(d.p_defunt[i]); });
-                [0, 1, 2].forEach((i) => { if (d.p_conjoint[i]) namesM[i].push(d.p_conjoint[i]); });
-            }
+            if (d.sexe !== 'M' && d.sexe !== 'F') return;
+            add(d.sexe, d.p_defunt);
+            add(d.sexe === 'M' ? 'F' : 'M', d.p_conjoint); // the spouse is of the other sex
         });
 
-        if (totalMen === 0) totalMen = 1;
-        if (totalWomen === 0) totalWomen = 1;
-
-        function buildNameChart(divId, nameArray, title, totalPop, colorShades) {
-            let counts1 = _.countBy(nameArray[0]);
-            let topNames = Object.entries(counts1).sort((a, b) => b[1] - a[1]).slice(0, 10).map((x) => x[0]);
-
+        function buildNameChart(divId, noteId, sex, title, shades) {
+            const total = base[sex];
+            if (!total) return;
+            const perRank = names[sex].map((list) => _.countBy(list));
+            const sumAll = (n) => perRank.reduce((s, c) => s + (c[n] || 0), 0);
+            const topNames = Object.keys(perRank[0]).sort((a, b) => sumAll(b) - sumAll(a)).slice(0, 10);
             if (topNames.length === 0) return;
+            const ordered = [...topNames].reverse(); // biggest on top in a horizontal bar chart
 
-            let traces = [];
-            [0, 1, 2].forEach((rank, i) => {
-                let counts = _.countBy(nameArray[rank]);
-                let percentages = topNames.map((n) => ((counts[n] || 0) / totalPop) * 100);
-                traces.push({
-                    x: topNames,
-                    y: percentages,
-                    type: 'bar',
-                    name: `${i + 1}${i === 0 ? 'er' : 'ème'} Prénom`,
-                    marker: { color: colorShades[i] }
-                });
-            });
+            setNote(noteId, `Base : ${fmtInt(total)} ${sex === 'M' ? 'hommes' : 'femmes'} (défunts et conjoints). ` +
+                'Chaque barre empile la part des personnes qui portent ce prénom en 1re, 2e ou 3e position.');
 
-            Plotly.newPlot(divId, traces, {
-                title: title + ` (Base: ${totalPop})`,
-                barmode: 'group',
-                yaxis: { title: '% de la population', ticksuffix: '%' },
-                legend: { orientation: 'h', y: 1.15 },
-                margin: { t: 80 }
-            });
+            const traces = [0, 1, 2].map((rank) => ({
+                y: ordered,
+                x: ordered.map((n) => ((perRank[rank][n] || 0) / total) * 100),
+                customdata: ordered.map((n) => perRank[rank][n] || 0),
+                type: 'bar', orientation: 'h',
+                name: rank === 0 ? '1er prénom' : `${rank + 1}e prénom`,
+                marker: { color: shades[rank], line: { color: '#fff', width: 1.5 } },
+                hovertemplate: `%{y}, ${rank === 0 ? '1er' : `${rank + 1}e`} prénom : %{x:.1f} % (%{customdata})<extra></extra>`
+            }));
+            Plotly.react(divId, traces, plotlyLayout({
+                height: 440,
+                barmode: 'stack',
+                margin: { t: 8, l: 90, b: 70 },
+                xaxis: { title: { text: '% des ' + (sex === 'M' ? 'hommes' : 'femmes') }, ticksuffix: ' %', rangemode: 'tozero' },
+                yaxis: { showgrid: false },
+                legend: { orientation: 'h', y: -0.28, x: 0.5, xanchor: 'center', traceorder: 'normal' }
+            }), PLOTLY_CONFIG);
         }
 
-        buildNameChart('chart-names-men', namesM, 'Prénoms Masculins', totalMen, PALETTE.maleShades);
-        buildNameChart('chart-names-women', namesF, 'Prénoms Féminins', totalWomen, PALETTE.femaleShades);
+        buildNameChart('chart-names-men', 'names-men-note', 'M', 'Prénoms masculins', PALETTE.maleShades);
+        buildNameChart('chart-names-women', 'names-women-note', 'F', 'Prénoms féminins', PALETTE.femaleShades);
     }
 
     // ---- Wiring & init ----------------------------------------------------
@@ -1701,6 +2020,10 @@
         const resetBtn = document.getElementById('reset-filters-btn');
         if (resetBtn) resetBtn.addEventListener('click', resetFilters);
 
+        document.querySelectorAll('.pitie-app [data-paris-view]').forEach((btn) => {
+            btn.addEventListener('click', () => setParisView(btn.dataset.parisView));
+        });
+
         const moreStatsBtn = document.getElementById('btn-more-stats');
         if (moreStatsBtn) moreStatsBtn.addEventListener('click', loadAdvancedStats);
 
@@ -1710,6 +2033,7 @@
 
     function init() {
         PALETTE = readPalette();
+        applyChartDefaults();
         bindEvents();
         loadCSVData();
         loadParisStreetsData();

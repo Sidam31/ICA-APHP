@@ -7,9 +7,8 @@
     <script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/jasondavies/d3-cloud@v1.2.7/build/d3.layout.cloud.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -257,7 +256,7 @@
 
             <div class="stats-grid">
                 <div class="stat-card">
-                    <h4 id="total-entries">5221</h4>
+                    <h4 id="total-entries">…</h4>
                     <p class="stat-label">Entrées Totales</p>
                 </div>
                 <div class="stat-card">
@@ -265,42 +264,65 @@
                     <p class="stat-label">Contributeurs</p>
                 </div>
                 <div class="stat-card">
-                    <h4 id="completion-rate">11.6%</h4>
+                    <h4 id="completion-rate">…</h4>
                     <p class="stat-label">Taux de Complétion</p>
                 </div>
             </div>
             <div class="big-stats-grid">
-                <div class="big-stat-card">
-                    <h3 id="word-cloud-title">Les 100 Noms de famille les plus fréquents</h3>
-                    <div id="word-cloud"></div>
+                <div class="big-stat-card span-2">
+                    <h3>Lieu de naissance : les départements de l'Empire français en 1811</h3>
+                    <p id="empire-summary" class="viz-note"></p>
+                    <div id="france-map" class="map-wrap"></div>
+                    <ul id="empire-legend" class="viz-legend" aria-label="Légende de la carte"></ul>
+                    <ol id="empire-top" class="rank-list" aria-label="Départements les plus représentés"></ol>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 15 causes de décès les plus fréquentes</h3>
-                    <canvas id="causes-chart"></canvas>
+                    <h3 id="word-cloud-title">Les 20 noms de famille les plus fréquents</h3>
+                    <p class="viz-note">Noms des défunts uniquement (hors conjoints), regroupés sans tenir compte de la casse.</p>
+                    <div class="chart-box" style="height: 560px;"><canvas id="surname-chart"></canvas></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Pyramide des âges au décès</h3>
-                    <canvas id="age-histogram-chart"></canvas>
+                    <h3>Âge au décès, par sexe</h3>
+                    <p id="age-summary" class="viz-note"></p>
+                    <div class="chart-box" style="height: 540px;"><canvas id="age-histogram-chart"></canvas></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Proportion des 15 professions les plus fréquentes</h3>
-                    <canvas id="prof-chart"></canvas>
+                    <h3>Les 15 causes de décès les plus fréquentes</h3>
+                    <p id="causes-summary" class="viz-note"></p>
+                    <div class="chart-box" style="height: 520px;"><canvas id="causes-chart"></canvas></div>
                 </div>
                 <div class="big-stat-card">
-                    <h3>Répartition géographique des lieux de naissance</h3>
-                    <div id="france-map"></div>
+                    <h3>Les 15 professions les plus fréquentes</h3>
+                    <p id="prof-summary" class="viz-note"></p>
+                    <div class="chart-box" style="height: 520px;"><canvas id="prof-chart"></canvas></div>
                 </div>
-                <div class="big-stat-card">
-                    <h3>Domiciles par quartier (1811-1849)</h3>
-                    <p id="domicile-stats-summary" style="font-size: 0.85em; color: var(--pitie-gray-600); margin-bottom: 8px;"></p>
-                    <canvas id="domicile-arr-chart" width="600" height="900"></canvas>
+                <div class="big-stat-card span-2">
+                    <h3>Domiciles par quartier (découpage de 1811-1849)</h3>
+                    <p id="domicile-stats-summary" class="viz-note"></p>
+                    <div class="chart-box" style="height: 1000px;"><canvas id="domicile-arr-chart"></canvas></div>
                 </div>
-                <div class="big-stat-card">
-                    <h3>Rues de résidence géolocalisées à Paris</h3>
-                    <p style="font-size: 0.85em; color: var(--pitie-gray-600); margin-bottom: 8px;">
-                        Sources : Lazare (1844) &amp; Perrot (1834) — bleu : position précise · orange : centre du quartier (approximatif).
-                    </p>
-                    <div id="domicile-map" style="height: 500px;"></div>
+                <div class="big-stat-card span-2">
+                    <h3>Où habitaient-ils à Paris ?</h3>
+                    <div class="seg-toggle" role="group" aria-label="Mode d'affichage de la carte">
+                        <button type="button" class="seg-btn is-active" data-paris-view="quartier" aria-pressed="true">Par quartier</button>
+                        <button type="button" class="seg-btn" data-paris-view="rues" aria-pressed="false">Par rue (GPS)</button>
+                    </div>
+                    <div data-paris-pane="quartier">
+                        <p id="quartier-map-note" class="viz-note"></p>
+                        <p class="viz-note">Quartiers d'aujourd'hui (80 quartiers administratifs) : les limites des 48 quartiers de 1811-1849 ne sont pas disponibles. Les quartiers voisins de l'hôpital dominent naturellement.</p>
+                    </div>
+                    <div data-paris-pane="rues" hidden>
+                        <p class="viz-note">Sources : Lazare (1844) &amp; Perrot (1834). L'aire des cercles est proportionnelle au nombre de décès.</p>
+                    </div>
+                    <div class="paris-maps">
+                        <div id="quartier-map" class="paris-map"></div>
+                        <div id="domicile-map" class="paris-map is-off"></div>
+                    </div>
+                    <ul id="quartier-legend" class="viz-legend" aria-label="Légende de la carte"></ul>
+                    <ul id="rues-legend" class="viz-legend" aria-label="Légende de la carte" hidden>
+                        <li><span class="viz-dot" style="background: var(--pitie-chart-s1);"></span>position précise de la rue</li>
+                        <li><span class="viz-dot" style="background: var(--pitie-chart-s2);"></span>centre du quartier (approximatif)</li>
+                    </ul>
                 </div>
             </div>
 
@@ -330,28 +352,32 @@
                     </h3>
                 </div>
                 <div class="big-stats-grid">
-                    <div class="big-stat-card">
-                        <h3>Intensité des Décès par Mois/Année</h3>
-                        <div id="chart-heatmap-deaths" style="min-height: 400px;"></div>
+                    <div class="big-stat-card span-2">
+                        <h3>Décès par mois et par année</h3>
+                        <p id="heatmap-note" class="viz-note"></p>
+                        <div id="chart-heatmap-deaths" style="min-height: 460px;"></div>
                     </div>
                     <div class="big-stat-card">
-                        <h3>Saisonnalité & Crise 1814</h3>
-                        <div id="chart-saison" style="min-height: 400px;"></div>
+                        <h3 id="saison-title">Saisonnalité des décès</h3>
+                        <p id="saison-note" class="viz-note"></p>
+                        <div id="chart-saison" style="min-height: 460px;"></div>
                     </div>
                 </div>
 
                 <!-- SECTION 2: Sociologie -->
                 <div class="filter-section" style="margin-top: 32px;">
-                    <h3 style="text-align: center;">Sociologie : Métiers & Espérance de vie</h3>
+                    <h3 style="text-align: center;">Sociologie : métiers et âge au décès</h3>
                 </div>
                 <div class="big-stats-grid">
-                    <div class="big-stat-card">
-                        <h3>Origine Provinciale des Métiers</h3>
-                        <div id="chart-heatmap-jobs" style="min-height: 800px;"></div>
+                    <div class="big-stat-card span-2">
+                        <h3>Métiers selon le département de naissance</h3>
+                        <p id="jobs-note" class="viz-note"></p>
+                        <div id="chart-heatmap-jobs" style="min-height: 640px;"></div>
                     </div>
                     <div class="big-stat-card">
-                        <h3>Distribution de l'âge au décès par métier</h3>
-                        <div id="chart-life-expectancy" style="min-height: 800px;"></div>
+                        <h3>Âge au décès selon la catégorie de métier</h3>
+                        <p id="life-note" class="viz-note"></p>
+                        <div id="chart-life-expectancy" style="min-height: 640px;"></div>
                     </div>
                 </div>
 
@@ -360,24 +386,27 @@
                     <h3 style="text-align: center;">Épidémiologie : Causes de décès selon l'âge</h3>
                 </div>
                 <div class="big-stats-grid">
-                    <div class="big-stat-card" style="grid-column: span 2;">
-                        <h3>🎻 Distribution de l'âge au décès par cause (Violin Plot)</h3>
-                        <div id="chart-cause-violin" style="min-height: 800px;"></div>
+                    <div class="big-stat-card span-2">
+                        <h3>Âge au décès selon la cause</h3>
+                        <p id="cause-violin-note" class="viz-note"></p>
+                        <div id="chart-cause-violin" style="min-height: 640px;"></div>
                     </div>
                 </div>
 
                 <!-- SECTION 3: Onomastique -->
                 <div class="filter-section" style="margin-top: 32px;">
-                    <h3 style="text-align: center;">Onomastique (% de la population H/F)</h3>
+                    <h3 style="text-align: center;">Onomastique (défunts et conjoints)</h3>
                 </div>
                 <div class="big-stats-grid">
                     <div class="big-stat-card">
-                        <h3>🤵 Prénoms Masculins les plus fréquents</h3>
-                        <div id="chart-names-men" style="min-height: 400px;"></div>
+                        <h3>Prénoms masculins les plus fréquents</h3>
+                        <p id="names-men-note" class="viz-note"></p>
+                        <div id="chart-names-men" style="min-height: 440px;"></div>
                     </div>
                     <div class="big-stat-card">
-                        <h3>👩 Prénoms Féminins les plus fréquents</h3>
-                        <div id="chart-names-women" style="min-height: 400px;"></div>
+                        <h3>Prénoms féminins les plus fréquents</h3>
+                        <p id="names-women-note" class="viz-note"></p>
+                        <div id="chart-names-women" style="min-height: 440px;"></div>
                     </div>
                 </div>
             </div>

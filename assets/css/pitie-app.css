@@ -376,8 +376,9 @@
 }
 
 .pitie-app .big-stats-grid {
-    display: flow;
-    grid-template-columns: 1fr 1fr;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+    align-items: start;
     gap: 32px;
     margin-top: 48px;
 }
@@ -411,6 +412,161 @@
     padding: 0;
     margin: auto;
     height: 200px;
+}
+
+/* ---- Charts (dataviz) ---------------------------------------------- */
+.pitie-app .big-stat-card.span-2 {
+    grid-column: 1 / -1;
+}
+
+.pitie-app .big-stat-card h3 {
+    margin-bottom: 4px;
+}
+
+.pitie-app .chart-box {
+    position: relative;
+    width: 100%;
+    margin-top: 12px;
+}
+
+.pitie-app .chart-box canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.pitie-app .viz-note {
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--pitie-chart-ink-2);
+    margin: 6px auto 0;
+    max-width: 62ch;
+}
+
+.pitie-app .viz-legend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 16px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8rem;
+    color: var(--pitie-chart-ink-2);
+}
+
+.pitie-app .viz-legend li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pitie-app .viz-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex: none;
+}
+
+.pitie-app .viz-dot {
+    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    flex: none;
+    opacity: 0.85;
+}
+
+.pitie-app .map-wrap {
+    position: relative;
+}
+
+.pitie-app .map-wrap svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--pitie-radius-sm);
+}
+
+.pitie-app .map-tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #fff;
+    border: 1px solid var(--pitie-chart-axis);
+    border-radius: var(--pitie-radius-sm);
+    box-shadow: var(--pitie-map-tooltip-shadow);
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--pitie-chart-ink);
+    opacity: 0;
+    transition: opacity 0.12s;
+    z-index: 5;
+    white-space: nowrap;
+}
+
+.pitie-app .map-tooltip .muted {
+    color: var(--pitie-chart-ink-2);
+}
+
+.pitie-app .rank-list {
+    list-style: none;
+    margin: 16px auto 0;
+    padding: 0;
+    max-width: 520px;
+    text-align: left;
+    font-size: 0.82rem;
+    color: var(--pitie-chart-ink-2);
+}
+
+.pitie-app .rank-list li {
+    display: grid;
+    grid-template-columns: 9.5em 1fr 5.5em;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+
+.pitie-app .rank-list .rank-bar {
+    height: 8px;
+    border-radius: 0 4px 4px 0;
+    background: var(--pitie-chart-s1);
+}
+
+.pitie-app .rank-list .rank-val {
+    text-align: right;
+}
+
+.pitie-app details.viz-table {
+    margin-top: 14px;
+    text-align: left;
+    font-size: 0.82rem;
+}
+
+.pitie-app details.viz-table summary {
+    cursor: pointer;
+    color: var(--pitie-blue);
+    text-align: center;
+}
+
+.pitie-app details.viz-table .viz-table-scroll {
+    max-height: 320px;
+    overflow: auto;
+    margin-top: 8px;
+}
+
+.pitie-app details.viz-table table {
+    margin-top: 0;
+}
+
+.pitie-app details.viz-table th,
+.pitie-app details.viz-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--pitie-chart-grid);
+}
+
+.pitie-app details.viz-table td:not(:first-child),
+.pitie-app details.viz-table th:not(:first-child) {
+    text-align: right;
 }
 
 /* Table */
@@ -632,4 +788,52 @@
     background: var(--pitie-gray-100);
     color: var(--pitie-gray-700);
     border-radius: var(--pitie-radius-pill);
+}
+
+/* Paris map: one card, two stacked maps (same size, so neither needs a resize on toggle) */
+.pitie-app .paris-maps {
+    position: relative;
+    height: 540px;
+    margin-top: 12px;
+}
+
+.pitie-app .paris-map {
+    position: absolute;
+    inset: 0;
+}
+
+.pitie-app .paris-map.is-off {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.pitie-app .seg-toggle {
+    display: inline-flex;
+    margin: 10px auto 4px;
+    border: 1px solid var(--pitie-chart-axis);
+    border-radius: var(--pitie-radius-pill);
+    overflow: hidden;
+}
+
+.pitie-app .seg-btn {
+    background: #fff;
+    color: var(--pitie-chart-ink-2);
+    border: 0;
+    padding: 6px 16px;
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.pitie-app .seg-btn + .seg-btn {
+    border-left: 1px solid var(--pitie-chart-axis);
+}
+
+.pitie-app .seg-btn.is-active {
+    background: var(--pitie-blue);
+    color: #fff;
+}
+
+.pitie-app [hidden] {
+    display: none !important;
 }

@@ -40,57 +40,44 @@
     --pitie-radius-lg: 15px;
     --pitie-radius-pill: 30px;
 
-    /* Chart palette — sequential blues (pie charts, map fill) */
-    --pitie-chart-seq-1: #0055A4;
-    --pitie-chart-seq-2: #1E90FF;
-    --pitie-chart-seq-3: #4682B4;
-    --pitie-chart-seq-4: #87CEEB;
-    --pitie-chart-seq-5: #ADD8E6;
-    --pitie-chart-seq-6: #B0C4DE;
-    --pitie-chart-seq-7: #6495ED;
-    --pitie-chart-seq-8: #00BFFF;
-    --pitie-chart-seq-9: #5F9EA0;
-    --pitie-chart-seq-10: #778899;
-    --pitie-chart-seq-11: #0D6EFD;
-    --pitie-chart-seq-12: #A9A9A9;
+    /* Chart palette — dataviz reference palette (validated, see dataviz skill / palette.md).
+       Categorical slots are only used where identity matters (sex: blue / orange);
+       everything else is one hue. */
+    --pitie-chart-s1: #2a78d6;
+    --pitie-chart-s2: #eb6834;
+    --pitie-chart-other: #b5b3ab;
 
-    /* Chart palette — categorical (violin plots: jobs / causes) */
-    --pitie-chart-cat-1: #e74c3c;
-    --pitie-chart-cat-2: #3498db;
-    --pitie-chart-cat-3: #2ecc71;
-    --pitie-chart-cat-4: #f39c12;
-    --pitie-chart-cat-5: #9b59b6;
-    --pitie-chart-cat-6: #1abc9c;
-    --pitie-chart-cat-7: #e67e22;
-    --pitie-chart-cat-8: #34495e;
-    --pitie-chart-cat-9: #16a085;
-    --pitie-chart-cat-10: #c0392b;
-    --pitie-chart-cat-11: #2980b9;
-    --pitie-chart-cat-12: #27ae60;
-    --pitie-chart-cat-13: #8e44ad;
-    --pitie-chart-cat-14: #d35400;
-    --pitie-chart-cat-15: #1abc9c;
-    --pitie-chart-cat-16: #7f8c8d;
-    --pitie-chart-cat-17: #2c3e50;
-    --pitie-chart-cat-18: #f1c40f;
+    /* Sequential ramp (one hue, light -> dark) — choropleth bins, heatmaps */
+    --pitie-chart-seq-1: #cde2fb;
+    --pitie-chart-seq-2: #9ec5f4;
+    --pitie-chart-seq-3: #6da7ec;
+    --pitie-chart-seq-4: #3987e5;
+    --pitie-chart-seq-5: #256abf;
+    --pitie-chart-seq-6: #184f95;
+    --pitie-chart-seq-7: #0d366b;
 
-    /* Chart palette — sex comparisons (age pyramid, name charts) */
-    --pitie-chart-male: #1E90FF;
-    --pitie-chart-male-1: #1a5276;
-    --pitie-chart-male-2: #2980b9;
-    --pitie-chart-male-3: #5dade2;
-    --pitie-chart-female: #FF69B4;
-    --pitie-chart-female-1: #922b21;
-    --pitie-chart-female-2: #c0392b;
-    --pitie-chart-female-3: #e74c3c;
+    /* Ordinal ramps (1st / 2nd / 3rd first name) */
+    --pitie-chart-male-1: #184f95;
+    --pitie-chart-male-2: #3987e5;
+    --pitie-chart-male-3: #9ec5f4;
+    --pitie-chart-female-1: #b04516;
+    --pitie-chart-female-2: #eb6834;
+    --pitie-chart-female-3: #f6b49a;
 
-    /* Chart palette — seasonality band */
-    --pitie-chart-mean-line: #2980b9;
-    --pitie-chart-peak-line: #c0392b;
-    --pitie-chart-band-fill: rgba(41, 128, 185, 0.2);
+    /* Chart chrome */
+    --pitie-chart-ink: #0b0b0b;
+    --pitie-chart-ink-2: #52514e;
+    --pitie-chart-muted: #898781;
+    --pitie-chart-grid: #e1e0d9;
+    --pitie-chart-axis: #c3c2b7;
+    --pitie-chart-sea: #e9f1f9;
+
+    /* Seasonality band */
+    --pitie-chart-band-fill: rgba(42, 120, 214, 0.16);
 
     /* Map */
-    --pitie-map-empty: #f0f0f0;
-    --pitie-map-stroke: #333333;
+    --pitie-map-empty: #ecebe6;
+    --pitie-map-foreign: #d9d7cf;
+    --pitie-map-stroke: #fcfcfb;
     --pitie-map-tooltip-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
