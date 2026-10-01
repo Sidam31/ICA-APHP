@@ -20,7 +20,7 @@
     const CONFIG = {
         csvUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/Relev%C3%A9s%20PIT%20-%20csv_export.csv',
         geoJsonUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/data_carte.geojson',
-        streetsJsonUrl: 'https://raw.githubusercontent.com/Sidam31/ICA-APHP/refs/heads/main/Data/rues-paris-lazare-1844.json',
+        streetsJsonUrl: 'https://sidam31.github.io/Outils-genealogiques/assets/data/rues-paris-lazare-1844.json',
         targetEntries: 45000,
         dataYearRange: [1809, 1860],
         maxResultsShown: 200,
@@ -1718,5 +1718,12 @@
 
     document.addEventListener('DOMContentLoaded', init);
 
-    window.PitieApp = { init: init, showPage: showPage };
+    window.PitieApp = {
+        init: init,
+        showPage: showPage,
+        // Used by pitie-gedcom-match.js (GEDCOM search)
+        getData: function () { return dbData; },
+        extractHistoricalDeptRaw: extractHistoricalDeptRaw,
+        resolveModernDeptCode: resolveModernDeptCode
+    };
 })();

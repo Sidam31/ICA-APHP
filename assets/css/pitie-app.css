@@ -556,3 +556,80 @@
     margin: 0 auto;
     display: block;
 }
+
+/* GEDCOM search */
+.pitie-app .gedcom-dropzone {
+    display: block;
+    margin: 16px 0;
+    padding: 32px 16px;
+    text-align: center;
+    border: 2px dashed var(--pitie-gray-300);
+    border-radius: var(--pitie-radius-md);
+    color: var(--pitie-gray-600);
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.pitie-app .gedcom-dropzone:hover,
+.pitie-app .gedcom-dropzone.dragover {
+    border-color: var(--pitie-blue);
+    background: var(--pitie-gray-50);
+}
+
+.pitie-app .gedcom-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.pitie-app .gedcom-options select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--pitie-gray-300);
+    border-radius: var(--pitie-radius-sm);
+}
+
+.pitie-app .gedcom-note {
+    font-size: 0.875rem;
+    color: var(--pitie-gray-600);
+}
+
+.pitie-app .gedcom-match {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 6px 0;
+}
+
+.pitie-app .gedcom-match + .gedcom-match {
+    border-top: 1px dashed var(--pitie-gray-300);
+}
+
+.pitie-app .gedcom-score {
+    flex: 0 0 64px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--pitie-blue);
+}
+
+.pitie-app .gedcom-score-bar {
+    height: 6px;
+    background: var(--pitie-gray-100);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.pitie-app .gedcom-score-bar div {
+    height: 100%;
+    background: var(--pitie-blue);
+}
+
+.pitie-app .gedcom-chip {
+    display: inline-block;
+    margin: 4px 4px 0 0;
+    padding: 1px 8px;
+    font-size: 0.75rem;
+    background: var(--pitie-gray-100);
+    color: var(--pitie-gray-700);
+    border-radius: var(--pitie-radius-pill);
+}

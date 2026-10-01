@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="assets/css/theme.css">
     <link rel="stylesheet" href="assets/css/pitie-app.css">
     <script src="assets/js/pitie-app.js" defer></script>
+    <script src="assets/js/pitie-gedcom-match.js" defer></script>
 </head>
 <body>
 <div class="pitie-app">
@@ -135,6 +136,42 @@
                         <button type="submit" class="btn btn-primary">Rechercher</button>
                     </div>
                 </form>
+            </div>
+            <div class="card" id="gedcom-card">
+                <h3>Rechercher à partir d'un fichier GEDCOM</h3>
+                <p>Déposez votre arbre : chaque individu est comparé aux relevés (noms et prénoms approchants, année de naissance estimée à partir de l'âge au décès, année de décès, département et commune de naissance). Le fichier est lu localement, il n'est envoyé nulle part.</p>
+                <label id="gedcom-dropzone" class="gedcom-dropzone" for="gedcom-file">
+                    <strong>Déposez un fichier .ged ici</strong> ou cliquez pour le choisir
+                    <input type="file" id="gedcom-file" accept=".ged,.gedcom,text/plain" hidden>
+                </label>
+                <div class="gedcom-options">
+                    <div class="form-control">
+                        <label for="gedcom-slack">Marge sur les années (±)</label>
+                        <input type="text" id="gedcom-slack" value="3" inputmode="numeric">
+                    </div>
+                    <div class="form-control">
+                        <label for="gedcom-name-tolerance">Tolérance sur les noms</label>
+                        <select id="gedcom-name-tolerance">
+                            <option value="0.92">Stricte</option>
+                            <option value="0.85" selected>Normale</option>
+                            <option value="0.78">Large (variantes d'orthographe)</option>
+                        </select>
+                    </div>
+                    <div class="form-control">
+                        <label for="gedcom-sex">Sexe</label>
+                        <select id="gedcom-sex">
+                            <option value="">Tous</option>
+                            <option value="M">Hommes</option>
+                            <option value="F">Femmes</option>
+                        </select>
+                    </div>
+                    <div class="form-control">
+                        <label for="gedcom-min-score">Score minimum (%)</label>
+                        <input type="text" id="gedcom-min-score" value="65" inputmode="numeric">
+                    </div>
+                </div>
+                <p id="gedcom-status" class="gedcom-note" role="status"></p>
+                <div id="gedcom-results"></div>
             </div>
             <div id="search-results" class="card">
                 <p class="text-center">Les résultats de la recherche s'afficheront ici.</p>
